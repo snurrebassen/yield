@@ -1,3 +1,4 @@
+import {angleDifference,laneStatus,projectPath,stepDriving,type Body,type LaneStatus} from './driving.ts';
 export type Route = 'straight' | 'left' | 'right';
 export type Indicator = 'left' | 'right' | null;
 export type LessonId = 'right' | 'left' | 'signed' | 'priority';
@@ -21,7 +22,6 @@ export function random(seed: number) { let value = seed >>> 0; return () => { va
 const colors = ['#cf6956', '#d1b66a', '#7a90ac', '#d5dbd6', '#526d65', '#a98bb2'];
 const heading: Record<Direction, number> = {north:0,east:90,south:180,west:270};
 const APPROACH_STOP = 176;
-const ROUTE_LOCK = 175;
 const CLEARANCE = 46;
 export function makeTraffic(lesson: LessonId, seed: number): Traffic[] {
   const rng = random(seed);
@@ -77,7 +77,10 @@ const cross=(a:Point,b:Point)=>a.x*b.y-a.y*b.x;
 const sub=(a:Point,b:Point)=>({x:a.x-b.x,y:a.y-b.y});
 export function pathConflicts(ad:Direction,ar:Route,bd:Direction,br:Route):Conflict[] {
   const key=[ad,ar,bd,br].join(':');const cached=conflictCache.get(key);if(cached)return cached;
-  const ap=path(ad,ar),bp=path(bd,br),result:Conflict[]=[];let al=0;
+  const result=intersections(path(ad,ar),path(bd,br));conflictCache.set(key,result);return result;
+}
+function intersections(ap:Point[],bp:Point[]):Conflict[]{
+  const result:Conflict[]=[];let al=0;
   for(let i=1;i<ap.length;i++){
     const p=ap[i-1],r=sub(ap[i],p),rl=Math.hypot(r.x,r.y);let bl=0;
     for(let j=1;j<bp.length;j++){
@@ -93,15 +96,14 @@ export function pathConflicts(ad:Direction,ar:Route,bd:Direction,br:Route):Confl
     }
     al+=rl;
   }
-  const unique=result.filter((v,i)=>!result.slice(0,i).some(o=>Math.abs(o.a-v.a)<1&&Math.abs(o.b-v.b)<1));conflictCache.set(key,unique);return unique;
+  const unique=result.filter((v,i)=>!result.slice(0,i).some(o=>Math.abs(o.a-v.a)<1&&Math.abs(o.b-v.b)<1));return unique;
 }
 export function conflictOnRoute(route:Route,direction:Direction):{point:Point;distance:number}|null {const c=pathConflicts('north',route,direction,'straight').sort((a,b)=>a.a-b.a)[0];return c?{point:c.point,distance:c.a}:null;}
-export type State={phase:Phase;lesson:LessonId;seed:number;time:number;distance:number;speed:number;route:Route;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:string;slowed:boolean};
-export function createState(lesson:LessonId='right',seed=42):State {const info=lessons.find(l=>l.id===lesson)!;return{phase:'ready',lesson,seed,time:0,distance:0,speed:0,route:info.preferred,indicator:null,indicatorSince:0,indicatorUsed:null,traffic:makeTraffic(lesson,seed),reason:'',slowed:false};}
-export function chooseRoute(state:State,route:Route){if(state.distance<ROUTE_LOCK&&!['failed','success'].includes(state.phase))state.route=route;}
+export type State={phase:Phase;lesson:LessonId;seed:number;time:number;distance:number;speed:number;route:Route;goal:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:string;slowed:boolean};
+export function createState(lesson:LessonId='right',seed=42):State {const info=lessons.find(l=>l.id===lesson)!;return{phase:'ready',lesson,seed,time:0,distance:0,speed:0,route:'straight',goal:info.preferred,player:{x:521,y:650,angle:0,wheel:0},assistance:.6,lane:'ok',offRoadTime:0,indicator:null,indicatorSince:0,indicatorUsed:null,traffic:makeTraffic(lesson,seed),reason:'',slowed:false};}
+export function goalPoint(route:Route):Point {return route==='left'?{x:65,y:319}:route==='right'?{x:895,y:401}:{x:521,y:65};}
 export function toggleIndicator(state:State,side:Exclude<Indicator,null>){if(['failed','success'].includes(state.phase))return;state.indicator=state.indicator===side?null:side;state.indicatorSince=state.time;}
-export function selectDirection(state:State,key:string){if(key==='w'||key==='ArrowUp')chooseRoute(state,'straight');else if(key==='a'||key==='ArrowLeft')chooseRoute(state,'left');else if(key==='d'||key==='ArrowRight')chooseRoute(state,'right');}
-export type Actor={id:number;direction:Direction;route:Route;distance:number;speed:number;cruiseSpeed:number};
+export type Actor={id:number;direction:Direction;route:Route;distance:number;speed:number;cruiseSpeed:number;pose?:Point & {angle:number}};
 export function mustYield(a:Pick<Actor,'direction'|'route'>,b:Pick<Actor,'direction'|'route'>,lesson:LessonId):boolean {
   if(a.direction===b.direction)return false;
   const av=a.direction==='north'||a.direction==='south',bv=b.direction==='north'||b.direction==='south';
@@ -114,12 +116,20 @@ function carActor(car:Traffic):Actor {
   car.route??='straight';car.cruiseSpeed??=car.speed;
   return{id:car.id,direction:car.direction,route:car.route,distance:car.distance,speed:car.speed,cruiseSpeed:car.cruiseSpeed};
 }
-function playerActor(s:State):Actor{return{id:-1,direction:'north',route:s.route,distance:s.distance,speed:s.speed,cruiseSpeed:88};}
+function playerActor(s:State):Actor{return{id:-1,direction:'north',route:s.route,distance:projectPath(routePoints(s.route),s.player).distance,speed:s.speed,cruiseSpeed:88,pose:s.player};}
 function perceivedPlayerRoutes(s:State):Route[] {
-  // Route selection is private. Others use a sustained, plausible signal or an observable turn.
-  const turned=Math.abs(poseAt(s.route,s.distance).angle)>18;
-  const signalled=s.indicator===s.route&&s.indicator!==null&&s.time-s.indicatorSince>=.6&&s.speed<=55;
-  return turned||signalled||s.distance>330?[s.route]:['straight','left','right'];
+  // Drivers see motion and signals, not the exercise destination.
+  const angle=angleDifference(s.player.angle,0);
+  if(Math.abs(angle)>18)return[s.route];
+  if(s.indicator&&s.time-s.indicatorSince>=.6&&s.speed<=55)return[s.indicator];
+  return s.player.y<285?['straight']:['straight','left','right'];
+}
+function trajectoryConflicts(state:State,car:Actor):Conflict[] {
+  const p={...state.player},points:Point[]=[{x:p.x,y:p.y}];
+  const speed=Math.max(state.speed,25),yaw=speed/45*Math.tan(p.wheel)*180/Math.PI;
+  // Predict from the actual free-moving car, including its current steering curvature.
+  for(let i=1;i<=24;i++){const dt=.15,angle=(p.angle+yaw*dt/2)*Math.PI/180;p.x+=Math.sin(angle)*speed*dt;p.y-=Math.cos(angle)*speed*dt;p.angle+=yaw*dt;points.push({x:p.x,y:p.y});}
+  return intersections(points,path(car.direction,car.route));
 }
 function gapRisk(a:Actor,b:Actor,c:Conflict,margin=1.3):boolean {
   const da=c.a-a.distance,db=c.b-b.distance;
@@ -132,7 +142,7 @@ function targetFor(car:Actor,actors:Actor[],state:State):{speed:number;stop:numb
   let target=car.cruiseSpeed,stop=Infinity,reason:Traffic['waitingFor']=null;
   for(const other of actors){
     if(other.id===car.id)continue;
-    const mine=lanePose(car.direction,car.route,car.distance),theirs=lanePose(other.direction,other.route,other.distance);
+    const mine=lanePose(car.direction,car.route,car.distance),theirs=other.pose??lanePose(other.direction,other.route,other.distance);
     const angle=mine.angle*Math.PI/180,forward={x:Math.sin(angle),y:-Math.cos(angle)},delta=sub(theirs,mine),along=delta.x*forward.x+delta.y*forward.y,lateral=Math.abs(cross(delta,forward));
     const aligned=Math.cos((mine.angle-theirs.angle)*Math.PI/180)>.8;
     if(along>0&&along<95&&lateral<25&&aligned){
@@ -141,9 +151,11 @@ function targetFor(car:Actor,actors:Actor[],state:State):{speed:number;stop:numb
     }
     const routes=other.id===-1?perceivedPlayerRoutes(state):[other.route];
     for(const route of routes){
-      const perceived={...other,route};
+      const observed=other.id===-1&&(Math.abs(angleDifference(state.player.angle,0))>18||projectPath(routePoints(state.route),state.player).offset>25);
+      const perceived={...other,route,distance:observed?0:other.distance};
       if(!mustYield(car,perceived,state.lesson))continue;
-      for(const c of pathConflicts(car.direction,car.route,other.direction,route)){
+      const conflicts=observed?trajectoryConflicts(state,car).map(c=>({point:c.point,a:c.b,b:c.a})):pathConflicts(car.direction,car.route,other.direction,route);
+      for(const c of conflicts){
         // Once already through the crossing, do not brake for traffic behind it.
         if(c.a-car.distance < -22 || !gapRisk(car,perceived,c,1.6))continue;
         const line=Math.min(APPROACH_STOP,c.a-60);
@@ -158,21 +170,29 @@ function targetFor(car:Actor,actors:Actor[],state:State):{speed:number;stop:numb
   }
   return{speed:target,stop,reason};
 }
-export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean}) {
+export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean;steer?:number}) {
   if(state.phase!=='driving')return;
   dt=Math.min(Math.max(dt,0),.05);state.time+=dt;
-  state.speed=Math.max(0,Math.min(88,state.speed+(input.brake?-125:input.gas?37:-19)*dt));
-  if(state.distance>95&&state.distance<200&&state.speed<35)state.slowed=true;
-  state.distance+=state.speed*dt;
-  if(state.indicator===state.route&&state.distance>ROUTE_LOCK)state.indicatorUsed=state.indicator;
+  const offRoad=laneStatus(state.player)==='off-road';
+  state.speed=Math.max(0,Math.min(offRoad?42:88,state.speed+(input.brake?-125:input.gas?37:-19)*dt));
+  const guide=state.player.y<480&&Math.abs(angleDifference(state.player.angle,0))>35?state.route:state.goal;
+  stepDriving(state.player,state.speed,input.steer??0,routePoints(guide),dt,state.assistance);
+  state.lane=laneStatus(state.player);
+  state.offRoadTime=state.lane==='off-road'?state.offRoadTime+dt:0;
+  const angle=angleDifference(state.player.angle,0);
+  if(state.player.y<510){if(angle < -18)state.route='left';else if(angle>18)state.route='right';else if(state.player.y<278)state.route='straight';}
+  state.distance=projectPath(routePoints(state.route),state.player).distance;
+  if(state.player.y<555&&state.player.y>450&&state.speed<35)state.slowed=true;
+  if(state.indicator===state.route&&Math.abs(angle)>20)state.indicatorUsed=state.indicator;
   const player=playerActor(state),actors=[player,...state.traffic.map(carActor)];
-  // Check the player's actual obligations, not whether NPCs can rescue an unsafe entry.
+  // Evaluate actual motion into a conflict; guidance and the goal never stand in for the car.
   for(const other of actors.slice(1)){
     if(!mustYield(player,other,state.lesson))continue;
-    for(const c of pathConflicts(player.direction,player.route,other.direction,other.route)){
-      const remaining=c.a-state.distance;
-      if(state.speed>10&&state.distance>190&&remaining>0&&remaining<155&&gapRisk(player,other,c,.55)){
-        state.phase='failed';state.reason=state.lesson==='left'?'Du svingte inn foran møtende trafikk. Vent før svingen til du kan krysse uten å forstyrre den andre bilen.':'Du kjørte inn i et for lite mellomrom. Slipp fram trafikken du har vikeplikt for, selv om du har satt på blinklyset.';return;
+    const entering=state.player.y<465&&state.player.y>255&&state.player.x>370&&state.player.x<590;
+    if(state.speed<=10||!entering)continue;
+    for(const c of trajectoryConflicts(state,other)){
+      if(c.a>0&&c.a<155&&gapRisk({...player,distance:0},other,c,.55)){
+        state.phase='failed';state.reason=state.route==='left'?'Du svingte inn foran møtende trafikk. Vent før svingen til du har en trygg luke.':'Du kjørte inn i et for lite mellomrom. Slipp fram trafikken du har vikeplikt for, selv om du har satt på blinklyset.';return;
       }
     }
   }
@@ -187,12 +207,15 @@ export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean}) {
     Object.assign(car,lanePose(car.direction,car.route!,car.distance));
     car.indicator=car.route==='straight'||car.distance<40||car.distance>routeLength(car.route!)-230?null:car.route;
   });
-  const p=poseAt(state.route,state.distance);
-  if(state.traffic.some(car=>Math.hypot(p.x-car.x,p.y-car.y)<35)){state.phase='failed';state.reason='Bilene kom for nær hverandre. Senk farten tidligere, og vent til du har en trygg luke.';return;}
-  if(state.distance>routeLength(state.route)-230&&state.route!=='straight')state.indicator=null;
-  if(state.distance>routeLength(state.route)-20){
-    const required=lessons.find(l=>l.id===state.lesson)!.required;
-    if(required&&state.route!==required){state.phase='failed';state.reason=required==='left'?'Oppgaven var å svinge til venstre. Velg venstre med A før du kommer inn i krysset.':'Oppgaven var å kjøre rett fram. Velg rett fram med W før du kommer inn i krysset.';}
-    else {state.phase='success';state.reason=state.lesson==='priority'?'Trygt gjennomført. De andre bilene vek for deg når de hadde vikeplikt. Du beholdt oversikten og kjørte da det var klart.':'Trygt gjennomført. Du passerte uten å hindre eller forstyrre trafikken du hadde vikeplikt for.';}
+  const p=state.player;
+  if(state.traffic.some(car=>Math.hypot(p.x-car.x,p.y-car.y)<35)){state.phase='failed';state.reason='Bilene kom for nær hverandre. Senk farten tidligere, og hold oversikt over hvor bilen faktisk er.';return;}
+  if(state.offRoadTime>4){state.phase='failed';state.reason='Du kjørte ut av veien. Bruk korte styreutslag og slipp A/D for å la rattet rette seg opp.';return;}
+  if(state.indicator&&Math.abs(angleDifference(p.angle,state.indicator==='left'?-90:90))<14&&((p.x<370)||(p.x>620)))state.indicator=null;
+  const exit:Route|null=p.y<80&&p.x>398&&p.x<562?'straight':p.x<80&&p.y>278&&p.y<442?'left':p.x>880&&p.y>278&&p.y<442?'right':null;
+  if(exit){
+    const targetHeading=exit==='left'?-90:exit==='right'?90:0;
+    if(exit!==state.goal){state.phase='failed';state.reason='Du kjørte ut en annen vei enn den markerte. Følg målmarkøren, og styr selv gjennom svingen.';}
+    else if(state.lane!=='ok'||Math.abs(angleDifference(p.angle,targetHeading))>40){state.phase='failed';state.reason='Du nådde riktig utkjøring, men havnet i feil kjørefelt eller retning. Rett opp bilen før målområdet.';}
+    else{state.phase='success';state.route=exit;state.reason=state.lesson==='priority'?'Trygt framme. De andre vek for deg, og du styrte bilen inn i den markerte utkjøringen.':'Trygt framme. Du styrte til mål uten å hindre eller forstyrre trafikken du hadde vikeplikt for.';}
   }
 }
