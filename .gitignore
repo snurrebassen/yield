@@ -3,3 +3,4 @@ dist/
 .sites-runtime/
 .env*
 *.tar.gz
+dist-core/

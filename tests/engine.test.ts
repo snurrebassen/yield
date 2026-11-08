@@ -1,12 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {angleDifference,cameraPoint,laneStatus,pointAlong,projectPath,steeringInput,stepDriving} from '../src/driving.ts';
-import {createState,guideRoute,tick,poseAt,routeLength,makeTraffic,routePoints,toggleIndicator,lanePose,mustYield,pathConflicts,type State,type Indicator,type Traffic,type Route,type JunctionRule} from '../src/engine.ts';
+import {createClock,advanceSimulation,stepSimulation,captureFrame,setPaused,vehiclesOverlap,createState,guideRoute,tick,poseAt,routeLength,makeTraffic,routePoints,toggleIndicator,lanePose,mustYield,pathConflicts,type State,type Indicator,type Traffic,type Route,type JunctionRule} from '../src/engine.ts';
 
 function fixture(rule:JunctionRule='unsigned'):State{const s=createState(42);s.rule=rule;s.traffic=[];return s;}
 function place(s:State,distance:number,route:Route='straight'){s.player={...poseAt(route,distance),wheel:0};s.route=route;s.distance=distance;}
 function driveInput(s:State,route:Route){const points=routePoints(route),p=projectPath(points,s.player),aim=pointAlong(points,p.distance+35);const angle=Math.atan2(aim.x-s.player.x,-(aim.y-s.player.y))*180/Math.PI;return Math.max(-1,Math.min(1,angleDifference(angle,s.player.angle)/32));}
-function advance(s:State,seconds:number,gas=false,route:Route|null=null){const crossings=s.crossings;for(let i=0;i<seconds/.05&&s.phase==='driving'&&s.crossings===crossings;i++)tick(s,.05,{gas,brake:!gas,steer:route?driveInput(s,route):0});}
+function advance(s:State,seconds:number,gas=false,route:Route|null=null){const crossings=s.crossings;for(let i=0;i<seconds*60&&s.phase==='driving'&&s.crossings===crossings;i++)stepSimulation(s,{gas,brake:!gas,steer:route?driveInput(s,route):0});}
 function npc(direction:Traffic['direction'],route:Route,distance:number,id=1):Traffic{return{id,direction,route,distance,speed:55,cruiseSpeed:60,...lanePose(direction,route,distance),color:'#789',style:0};}
 
 test('same-junction retries reproduce rules and all traffic exactly',()=>{assert.deepEqual(createState(42),createState(42));assert.deepEqual(makeTraffic('unsigned',42),makeTraffic('unsigned',42));});
@@ -32,7 +32,7 @@ test('right-hand priority applies to all approaches and signs override it',()=>{
 });
 test('traffic from the left stops for the player and resumes after the player passes',()=>{const s=fixture();s.phase='driving';place(s,160);s.traffic=[npc('east','straight',65)];advance(s,4);assert.ok(s.traffic[0].speed<1);assert.ok(s.traffic[0].x<398);assert.equal(s.traffic[0].waitingFor,'priority');advance(s,3,true);assert.equal(s.phase,'driving');assert.ok(s.traffic[0].speed>10);});
 test('an oncoming left-turner yields to the player going straight',()=>{const s=fixture();s.phase='driving';place(s,160);s.traffic=[npc('south','left',75)];advance(s,4);assert.ok(s.traffic[0].speed<1);assert.equal(s.traffic[0].waitingFor,'priority');assert.ok(s.traffic[0].y<278);});
-test('NPCs yield to other NPCs',()=>{const s=fixture();s.phase='driving';s.traffic=[npc('west','straight',70,1),npc('south','straight',70,2)];advance(s,2);assert.ok(s.traffic[0].distance!<=176);assert.ok(s.traffic[0].speed<20);assert.equal(s.traffic[0].waitingFor,'priority');assert.ok(s.traffic[1].distance!>180);});
+test('NPCs yield to other NPCs',()=>{const s=fixture();s.phase='driving';s.traffic=[npc('west','straight',70,1),npc('south','straight',70,2)];let waited=false,minSpeed=55;for(let i=0;i<120;i++){stepSimulation(s,{gas:false,brake:true});waited||=s.traffic[0].waitingFor==='priority';minSpeed=Math.min(minSpeed,s.traffic[0].speed);}assert.ok(waited);assert.ok(minSpeed<10);assert.ok(s.traffic[1].distance!>180);});
 test('queues maintain a car-length gap behind stopped vehicles',()=>{const s=fixture();s.phase='driving';place(s,160);s.traffic=[npc('east','straight',120,1),npc('east','straight',35,2)];advance(s,6);assert.ok(s.traffic[0].speed<1);assert.ok(s.traffic[1].speed<1);assert.ok(s.traffic[0].x-s.traffic[1].x>=55);assert.equal(s.traffic[1].waitingFor,'queue');});
 
 function intentionFixture(signal:Indicator){const s=fixture();Object.assign(s,{phase:'driving',time:1,speed:20});place(s,120,'left');s.traffic=[npc('south','left',175)];s.traffic[0].speed=30;if(signal){toggleIndicator(s,signal);s.indicatorSince=0;}for(let i=0;i<5;i++)tick(s,.05,{gas:false,brake:false});return s;}
@@ -44,8 +44,8 @@ test('player indicators toggle independently of steering',()=>{const s=fixture()
 
 test('all three exits are accepted without any prescribed destination',()=>{for(const route of ['straight','left','right'] as const){const s=fixture();s.phase='driving';if(route!=='straight')toggleIndicator(s,route);advance(s,20,true,route);assert.equal(s.crossings,1,route+': '+s.reason);assert.equal(s.phase,'driving');assert.notEqual(s.seed,42);assert.ok(s.traffic.length>=2);}});
 test('a legal return along the entry road is accepted',()=>{const s=fixture();s.phase='driving';s.player={x:439,y:795,angle:180,wheel:0};tick(s,.05,{gas:false,brake:false});assert.equal(s.crossings,1);assert.equal(s.phase,'driving');});
-test('exiting in the wrong lane still gives safety feedback',()=>{const s=fixture();s.phase='driving';s.player={x:450,y:75,angle:0,wheel:0};tick(s,.05,{gas:false,brake:false});assert.equal(s.phase,'failed');assert.equal(s.crossings,0);assert.match(s.reason,/kjørefelt/);});
-test('a new junction preserves speed, steering, lane offset and relative heading',()=>{const s=fixture();s.phase='driving';s.player={x:885,y:406,angle:92,wheel:.1};s.speed=45;tick(s,.05,{gas:true,brake:false,steer:.15});assert.equal(s.crossings,1);assert.ok(s.speed>45);assert.ok(s.player.wheel>0);assert.ok(s.player.x>525);assert.ok(s.player.x<530);assert.ok(s.player.angle>1&&s.player.angle<5);assert.equal(s.player.y,650);});
+test('exiting in the wrong lane still gives safety feedback',()=>{const s=fixture();s.phase='driving';s.player={x:450,y:75,angle:0,wheel:0};tick(s,.05,{gas:false,brake:false});assert.equal(s.phase,'failed');assert.equal(s.crossings,0);assert.equal(s.reason,'wrong-lane');});
+test('a new junction preserves speed, steering, lane offset and relative heading',()=>{const s=fixture();s.phase='driving';s.player={x:885,y:406,angle:92,wheel:.1};s.speed=45;stepSimulation(s,{gas:true,brake:false,steer:.15});assert.equal(s.crossings,1);assert.ok(s.speed>45);assert.ok(s.player.wheel>0);assert.ok(s.player.x>525);assert.ok(s.player.x<530);assert.ok(s.player.angle>1&&s.player.angle<5);assert.equal(s.player.y,650);});
 test('continuous practice can pass multiple independently randomized junctions',()=>{const s=fixture();s.phase='driving';for(const route of ['left','right','straight'] as const){s.traffic=[];advance(s,20,true,route);assert.equal(s.phase,'driving',s.reason);}assert.equal(s.crossings,3);});
 test('the seed of an encountered junction exactly recreates its rules and traffic',()=>{const s=fixture();s.phase='driving';advance(s,20,true,'right');const replay=createState(s.seed);assert.equal(replay.rule,s.rule);assert.deepEqual(replay.traffic,s.traffic);});
 
@@ -63,3 +63,74 @@ test('NPC emergency braking sees a car outside its expected lane',()=>{const s=f
 test('car-relative camera keeps the player fixed and forward pointing up',()=>{for(const angle of [0,90,180,-90,410]){const body={x:400,y:500,angle,wheel:0};assert.deepEqual(cameraPoint(body,body),{x:480,y:535});const rad=angle*Math.PI/180,p=cameraPoint({x:body.x+Math.sin(rad)*50,y:body.y-Math.cos(rad)*50},body);assert.ok(Math.abs(p.x-480)<1e-8);assert.ok(Math.abs(p.y-485)<1e-8);}});
 test('overview keeps world coordinates fixed',()=>{const body={x:521,y:650,angle:90,wheel:0};assert.deepEqual(cameraPoint({x:80,y:319},body,false),{x:80,y:319});});
 test('wrong lane and grass produce separate warnings',()=>{assert.equal(laneStatus({x:450,y:600,angle:0}),'wrong-lane');assert.equal(laneStatus({x:450,y:600,angle:180}),'ok');assert.equal(laneStatus({x:350,y:600,angle:0}),'off-road');});
+
+function situation(x:number,y:number,angle:number,speed:number,direction:Traffic['direction'],distance:number):State {
+  const s=fixture();s.phase='driving';s.player={x,y,angle,wheel:0};s.speed=speed;s.traffic=[npc(direction,'straight',distance)];return s;
+}
+test('a developing short gap produces an amber warning without ending the drive',()=>{
+  const s=situation(521,490,0,50,'west',120);stepSimulation(s,{gas:false,brake:false});
+  assert.equal(s.phase,'driving');assert.equal(s.failure,null);assert.equal(s.warning?.severity,'warning');assert.equal(s.warning?.code,'yield-caution');assert.deepEqual(s.warning?.actorIds,[-1,1]);
+});
+test('a cautious reaction before entry produces pressure feedback rather than a failure',()=>{
+  const s=situation(465,470,-40,5,'south',330);stepSimulation(s,{gas:false,brake:false});
+  assert.equal(s.phase,'driving');assert.equal(s.failure,null);assert.equal(s.warning?.code,'priority-pressure');assert.ok(s.traffic[0].speed<55);
+});
+test('slowing safely clears an early warning and allows the drive to continue',()=>{
+  const s=situation(521,490,0,50,'west',120);stepSimulation(s,{gas:false,brake:false});assert.ok(s.warning);advance(s,4);
+  assert.equal(s.phase,'driving');assert.equal(s.speed,0);assert.equal(s.warning,null);assert.equal(s.failure,null);
+});
+test('forced hard braking by priority traffic inside the junction records a violation',()=>{
+  const s=situation(465,450,-40,40,'south',320);stepSimulation(s,{gas:false,brake:false});
+  assert.equal(s.phase,'failed');assert.equal(s.failure?.event.code,'yield-violation');assert.ok(s.failure!.event.facts.otherDeceleration>65);assert.deepEqual(s.failure?.event.actorIds,[-1,1]);assert.ok(s.failure?.event.point);
+});
+test('a collision records actual contact instead of a predicted gap warning',()=>{
+  const s=situation(521,415,0,20,'east',331);stepSimulation(s,{gas:false,brake:false});
+  assert.equal(s.phase,'failed');assert.equal(s.failure?.event.code,'collision');assert.equal(s.failure?.event.severity,'failure');assert.equal(s.warning,null);
+});
+test('failure snapshots contain all vehicles at exactly the frozen simulation frame',()=>{
+  const s=situation(521,415,0,20,'east',331);stepSimulation(s,{gas:false,brake:false});
+  assert.deepEqual(s.failure?.scene,captureFrame(s));assert.equal(s.failure?.event.frame,s.frameNumber);assert.equal(s.failure?.event.time,s.time);
+  const frozen=structuredClone(s);for(let i=0;i<100;i++){tick(s,.05,{gas:true,brake:false,steer:1});setPaused(s,false);toggleIndicator(s,'left');}
+  assert.deepEqual(s,frozen);assert.deepEqual(s.failure?.scene,frozen.failure?.scene);
+});
+test('failure capture is a copy, independent of renderer-side object mutation',()=>{
+  const s=situation(521,415,0,20,'east',331);stepSimulation(s,{gas:false,brake:false});const original=structuredClone(s.failure!.scene);
+  s.player.x+=100;s.traffic[0].x+=100;assert.deepEqual(s.failure!.scene,original);
+});
+test('oriented collision bounds allow close cars in separate lanes',()=>{
+  assert.equal(vehiclesOverlap({x:0,y:0,angle:0},{x:27,y:0,angle:0}),false);
+  assert.equal(vehiclesOverlap({x:0,y:0,angle:0},{x:0,y:42,angle:0}),true);
+  assert.equal(vehiclesOverlap({x:0,y:0,angle:0},{x:0,y:44,angle:0}),false);
+  assert.equal(vehiclesOverlap({x:0,y:0,angle:45},{x:10,y:10,angle:-45}),true);
+});
+test('simulation results are identical at 30, 60 and 144 rendered frames per second',()=>{
+  const runs=[30,60,144].map(fps=>{const s=fixture(),clock=createClock();s.phase='driving';for(let i=0;i<fps*6;i++)advanceSimulation(s,clock,1/fps,{gas:true,brake:false,steer:0});return s;});
+  assert.deepEqual(runs[0],runs[1]);assert.deepEqual(runs[1],runs[2]);assert.equal(runs[0].frameNumber,360);
+});
+test('pause freezes evidence and discards elapsed wall time before resuming',()=>{
+  const s=fixture(),clock=createClock();s.phase='driving';advanceSimulation(s,clock,.1,{gas:true,brake:false});setPaused(s,true);const paused=structuredClone(s);
+  assert.equal(advanceSimulation(s,clock,120,{gas:true,brake:false,steer:1}),0);assert.deepEqual(s,paused);assert.equal(clock.accumulator,0);
+  setPaused(s,false);advanceSimulation(s,clock,1/60,{gas:false,brake:true});assert.equal(s.frameNumber,paused.frameNumber+1);
+});
+test('plain JSON state can be transferred and resumed deterministically in another host',()=>{
+  const a=fixture();a.phase='driving';advance(a,1,true);const b:State=JSON.parse(JSON.stringify(a));
+  for(let i=0;i<120;i++){const input={gas:false,brake:i<20,steer:i>60?.1:0};stepSimulation(a,input);stepSimulation(b,input);}
+  assert.deepEqual(a,b);
+});
+test('a long host frame uses a bounded catch-up budget',()=>{
+  const s=fixture(),clock=createClock();s.phase='driving';const steps=advanceSimulation(s,clock,20,{gas:true,brake:false});assert.equal(steps,15);assert.equal(s.frameNumber,15);
+});
+
+test('core modules depend only on other core modules and contain no host APIs',async()=>{
+  const {readdir,readFile}=await import('node:fs/promises');
+  const files=await readdir(new URL('../src/core/',import.meta.url));
+  for(const name of files.filter(name=>name.endsWith('.ts'))){const source=await readFile(new URL('../src/core/'+name,import.meta.url),'utf8');
+    for(const match of source.matchAll(/(?:from|import)\s*['"]([^'"]+)['"]/g))assert.ok(match[1].startsWith('./')&&!match[1].includes('../'),name+': '+match[1]);
+    assert.doesNotMatch(source,/\b(?:window|document|localStorage|requestAnimationFrame|performance)\s*[.(]|Math\.random\s*\(|Date\.now\s*\(/,name);
+  }
+});
+test('warning history is deduplicated and bounded during long practice',async()=>{
+  const {warn}=await import('../src/core/events.ts');const s=fixture();
+  for(let i=0;i<100;i++){s.time=i*4;warn(s,'yield-caution',1);}
+  assert.equal(s.events.length,64);const id=s.warning!.id;for(let i=0;i<100;i++)warn(s,'yield-caution',1);assert.equal(s.warning!.id,id);assert.equal(s.events.length,64);
+});
