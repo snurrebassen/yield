@@ -1,8 +1,8 @@
 import {angleDifference,laneStatus,projectPath,stepDriving,type Body,type LaneStatus} from './driving.ts';
 export type Route = 'straight' | 'left' | 'right';
 export type Indicator = 'left' | 'right' | null;
-export type LessonId = 'right' | 'left' | 'signed' | 'priority';
-export type Phase = 'ready' | 'driving' | 'paused' | 'success' | 'failed';
+export type JunctionRule = 'unsigned' | 'signed';
+export type Phase = 'ready' | 'driving' | 'paused' | 'failed';
 export type Point = { x: number; y: number };
 export type Direction = 'north' | 'east' | 'south' | 'west';
 export type Traffic = {
@@ -11,30 +11,33 @@ export type Traffic = {
   route?: Route; distance?: number; cruiseSpeed?: number; indicator?: Indicator;
   braking?: boolean; waitingFor?: 'priority' | 'queue' | 'safety' | null;
 };
-export type Lesson = { id: LessonId; title: string; short: string; description: string; rule: string; source: string; preferred: Route; required?: Route };
-export const lessons: Lesson[] = [
-  { id: 'right', title: 'Trafikk fra høyre', short: 'Høyreregelen', description: 'Kjør gjennom krysset. Se etter trafikk fra høyre. Biler fra venstre må vike for deg når rutene deres møtes.', rule: 'Uten skilt eller lyssignaler gjelder høyreregelen for alle. Du viker for trafikk fra høyre; trafikk fra venstre viker for deg når dere kan komme i konflikt.', source: 'Trafikkreglene § 7 nr. 1–2', preferred: 'straight' },
-  { id: 'left', title: 'Sving til venstre', short: 'Møtende trafikk', description: 'Ta til venstre i krysset. Gi tegn med Q, og slipp fram møtende trafikk før du svinger.', rule: 'Når du svinger til venstre og får møtende kjøretøy på din høyre side, har du vikeplikt. Vis tydelig at du vil vike. Blinklys varsler; det gir ikke forkjørsrett.', source: 'Trafikkreglene § 7 og § 14', preferred: 'left', required: 'left' },
-  { id: 'signed', title: 'Skiltet vikeplikt', short: 'Se begge veier', description: 'Kjør rett fram. Se etter trafikk fra begge sider, og vike før vikelinjen. Blinklys opphever ikke vikeplikten.', rule: 'Vikepliktskiltet betyr at du skal vike for kjørende i begge retninger på den kryssende veien. Det er ikke krav om full stans hvis du kan kjøre uten å hindre eller forstyrre andre.', source: 'Skiltforskriften, skilt 202 · Trafikkreglene § 7 nr. 1', preferred: 'straight', required: 'straight' },
-  { id: 'priority', title: 'De andre viker', short: 'Din tur til å kjøre', description: 'Kjør gjennom krysset. Bilen fra venstre skal vike for deg. Den møtende bilen som svinger til venstre, skal også slippe deg fram.', rule: 'Høyreregelen gjelder også de andre bilene. Møtende som svinger til venstre, må vike når ruten deres krysser din. Gi tydelig tegn før en sving, og følg med selv om andre har vikeplikt.', source: 'Trafikkreglene § 7 og § 14', preferred: 'straight' },
-];
+export const ruleInfo:Record<JunctionRule,{title:string;description:string;source:string}>={
+  unsigned:{title:'Høyreregelen',description:'Her er det ingen vikepliktskilt. Vik for kjøretøy fra høyre. Når du svinger til venstre, må du også vike for møtende trafikk som krysser ruten din. De andre bilene følger de samme reglene.',source:'Trafikkreglene § 7'},
+  signed:{title:'Skiltet vikeplikt',description:'Vikepliktskiltet betyr at du skal vike for kjørende i begge retninger på den kryssende veien. Velg selv om du vil til venstre, rett fram eller til høyre, og vent på en trygg luke.',source:'Skiltforskriften, skilt 202 · Trafikkreglene § 7'},
+};
 export function random(seed: number) { let value = seed >>> 0; return () => { value = (Math.imul(1664525, value) + 1013904223) >>> 0; return value / 4294967296; }; }
 const colors = ['#cf6956', '#d1b66a', '#7a90ac', '#d5dbd6', '#526d65', '#a98bb2'];
 const heading: Record<Direction, number> = {north:0,east:90,south:180,west:270};
 const APPROACH_STOP = 176;
 const CLEARANCE = 46;
-export function makeTraffic(lesson: LessonId, seed: number): Traffic[] {
-  const rng = random(seed);
-  const specs: [Direction, number, number, Route][] = lesson === 'left'
-    ? [['south',10,61,'straight'],['south',-255,65,'straight']]
-    : lesson === 'signed' ? [['west',800,62,'straight'],['east',125,57,'straight'],['west',1105,66,'straight']]
-    : lesson === 'priority' ? [['east',220,58,'straight'],['south',88,56,'left'],['east',-20,60,'right']]
-    : [['west',800,62,'straight'],['east',200,58,'straight'],['west',1090,68,'straight']];
-  return specs.map(([direction,pos,speed,route],id) => {
-    const distance=direction==='south'?pos-70:direction==='west'?770-pos:direction==='east'?pos-190:650-pos;
-    const cruiseSpeed=speed+rng()*3;
-    return {id,direction,route,distance,cruiseSpeed,speed:cruiseSpeed,...lanePose(direction,route,distance),color:colors[Math.floor(rng()*colors.length)],style:Math.floor(rng()*3),indicator:null,braking:false,waitingFor:null};
-  });
+export function makeTraffic(rule:JunctionRule,seed:number):Traffic[] {
+  const rng=random(seed^0x5bd1e995);
+  // Random streams vary approach, spacing, turns, speed, body and colour. Responses
+  // still obey the same deterministic rules; driver hesitation is a later increment.
+  const horizontal=rule==='signed'||rng()<.65;
+  const directions:Direction[]=horizontal?(rng()<.5?['east','west']:['west','east']):['south'];
+  const traffic:Traffic[]=[];
+  for(const direction of directions){
+    const count=2+Math.floor(rng()*3);let distance=-20-rng()*135;
+    for(let i=0;i<count;i++){
+      const turn=rng();
+      const route:Route=direction==='west'?(turn<.3?'right':'straight'):turn<.25?'left':turn>.72?'right':'straight';
+      const cruiseSpeed=48+rng()*22;
+      traffic.push({id:traffic.length,direction,route,distance,cruiseSpeed,speed:cruiseSpeed,...lanePose(direction,route,distance),color:colors[Math.floor(rng()*colors.length)],style:Math.floor(rng()*3),indicator:null,braking:false,waitingFor:null});
+      distance-=210+rng()*130;
+    }
+  }
+  return traffic;
 }
 const routeCache=new Map<Route,Point[]>();
 export function routePoints(route:Route):Point[] {
@@ -99,15 +102,34 @@ function intersections(ap:Point[],bp:Point[]):Conflict[]{
   const unique=result.filter((v,i)=>!result.slice(0,i).some(o=>Math.abs(o.a-v.a)<1&&Math.abs(o.b-v.b)<1));return unique;
 }
 export function conflictOnRoute(route:Route,direction:Direction):{point:Point;distance:number}|null {const c=pathConflicts('north',route,direction,'straight').sort((a,b)=>a.a-b.a)[0];return c?{point:c.point,distance:c.a}:null;}
-export type State={phase:Phase;lesson:LessonId;seed:number;time:number;distance:number;speed:number;route:Route;goal:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:string;slowed:boolean};
-export function createState(lesson:LessonId='right',seed=42):State {const info=lessons.find(l=>l.id===lesson)!;return{phase:'ready',lesson,seed,time:0,distance:0,speed:0,route:'straight',goal:info.preferred,player:{x:521,y:650,angle:0,wheel:0},assistance:.6,lane:'ok',offRoadTime:0,indicator:null,indicatorSince:0,indicatorUsed:null,traffic:makeTraffic(lesson,seed),reason:'',slowed:false};}
-export function goalPoint(route:Route):Point {return route==='left'?{x:65,y:319}:route==='right'?{x:895,y:401}:{x:521,y:65};}
-export function toggleIndicator(state:State,side:Exclude<Indicator,null>){if(['failed','success'].includes(state.phase))return;state.indicator=state.indicator===side?null:side;state.indicatorSince=state.time;}
+export type State={phase:Phase;rule:JunctionRule;seed:number;time:number;distance:number;speed:number;route:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:string;slowed:boolean;crossings:number;notice:string;noticeUntil:number};
+export function freshSeed():number{return Math.floor(Math.random()*0x100000000)>>>0;}
+export function createState(seed:number=freshSeed()):State {
+  const rule:JunctionRule=random(seed^0xa511e9b3)()<.38?'signed':'unsigned';
+  return{phase:'ready',rule,seed,time:0,distance:0,speed:0,route:'straight',player:{x:521,y:650,angle:0,wheel:0},assistance:.6,lane:'ok',offRoadTime:0,indicator:null,indicatorSince:0,indicatorUsed:null,traffic:makeTraffic(rule,seed),reason:'',slowed:false,crossings:0,notice:'',noticeUntil:0};
+}
+// Choose assistance from observed motion and the indicator, never a destination.
+export function guideRoute(state:State):Route {
+  const angle=angleDifference(state.player.angle,0);
+  if(state.player.y<510&&Math.abs(angle)>18)return angle<0?'left':'right';
+  if(state.indicator&&state.player.y<550)return state.indicator;
+  return 'straight';
+}
+function nextJunction(state:State,exit:Route|'back'){
+  const p=state.player,targetHeading=exit==='left'?-90:exit==='right'?90:exit==='back'?180:0;
+  const offset=exit==='left'?319-p.y:exit==='right'?p.y-401:exit==='back'?439-p.x:p.x-521;
+  const next=createState((Math.imul(state.seed,1664525)+1013904223)>>>0);
+  next.phase='driving';next.crossings=state.crossings+1;next.speed=state.speed;next.assistance=state.assistance;
+  next.player={x:521+offset,y:650,angle:angleDifference(p.angle,targetHeading),wheel:p.wheel};
+  next.notice=state.route!=='straight'&&state.indicatorUsed!==state.route?'Trygt gjennom. Husk å gi tegn før du svinger.':'Trygt gjennom. Et nytt kryss venter.';next.noticeUntil=3;
+  Object.assign(state,next);
+}
+export function toggleIndicator(state:State,side:Exclude<Indicator,null>){if(state.phase==='failed')return;state.indicator=state.indicator===side?null:side;state.indicatorSince=state.time;}
 export type Actor={id:number;direction:Direction;route:Route;distance:number;speed:number;cruiseSpeed:number;pose?:Point & {angle:number}};
-export function mustYield(a:Pick<Actor,'direction'|'route'>,b:Pick<Actor,'direction'|'route'>,lesson:LessonId):boolean {
+export function mustYield(a:Pick<Actor,'direction'|'route'>,b:Pick<Actor,'direction'|'route'>,rule:JunctionRule):boolean {
   if(a.direction===b.direction)return false;
   const av=a.direction==='north'||a.direction==='south',bv=b.direction==='north'||b.direction==='south';
-  if(lesson==='signed'&&av!==bv)return av;
+  if(rule==='signed'&&av!==bv)return av;
   const diff=(heading[b.direction]-heading[a.direction]+360)%360;
   return diff===270 || (diff===180&&a.route==='left'&&b.route!=='left');
 }
@@ -118,7 +140,7 @@ function carActor(car:Traffic):Actor {
 }
 function playerActor(s:State):Actor{return{id:-1,direction:'north',route:s.route,distance:projectPath(routePoints(s.route),s.player).distance,speed:s.speed,cruiseSpeed:88,pose:s.player};}
 function perceivedPlayerRoutes(s:State):Route[] {
-  // Drivers see motion and signals, not the exercise destination.
+  // Drivers infer intentions from motion and signals.
   const angle=angleDifference(s.player.angle,0);
   if(Math.abs(angle)>18)return[s.route];
   if(s.indicator&&s.time-s.indicatorSince>=.6&&s.speed<=55)return[s.indicator];
@@ -153,7 +175,7 @@ function targetFor(car:Actor,actors:Actor[],state:State):{speed:number;stop:numb
     for(const route of routes){
       const observed=other.id===-1&&(Math.abs(angleDifference(state.player.angle,0))>18||projectPath(routePoints(state.route),state.player).offset>25);
       const perceived={...other,route,distance:observed?0:other.distance};
-      if(!mustYield(car,perceived,state.lesson))continue;
+      if(!mustYield(car,perceived,state.rule))continue;
       const conflicts=observed?trajectoryConflicts(state,car).map(c=>({point:c.point,a:c.b,b:c.a})):pathConflicts(car.direction,car.route,other.direction,route);
       for(const c of conflicts){
         // Once already through the crossing, do not brake for traffic behind it.
@@ -175,7 +197,7 @@ export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean;stee
   dt=Math.min(Math.max(dt,0),.05);state.time+=dt;
   const offRoad=laneStatus(state.player)==='off-road';
   state.speed=Math.max(0,Math.min(offRoad?42:88,state.speed+(input.brake?-125:input.gas?37:-19)*dt));
-  const guide=state.player.y<480&&Math.abs(angleDifference(state.player.angle,0))>35?state.route:state.goal;
+  const guide=guideRoute(state);
   stepDriving(state.player,state.speed,input.steer??0,routePoints(guide),dt,state.assistance);
   state.lane=laneStatus(state.player);
   state.offRoadTime=state.lane==='off-road'?state.offRoadTime+dt:0;
@@ -185,9 +207,9 @@ export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean;stee
   if(state.player.y<555&&state.player.y>450&&state.speed<35)state.slowed=true;
   if(state.indicator===state.route&&Math.abs(angle)>20)state.indicatorUsed=state.indicator;
   const player=playerActor(state),actors=[player,...state.traffic.map(carActor)];
-  // Evaluate actual motion into a conflict; guidance and the goal never stand in for the car.
+  // Evaluate actual motion into a conflict; guidance never stands in for the car.
   for(const other of actors.slice(1)){
-    if(!mustYield(player,other,state.lesson))continue;
+    if(!mustYield(player,other,state.rule))continue;
     const entering=state.player.y<465&&state.player.y>255&&state.player.x>370&&state.player.x<590;
     if(state.speed<=10||!entering)continue;
     for(const c of trajectoryConflicts(state,other)){
@@ -211,11 +233,10 @@ export function tick(state:State,dt:number,input:{gas:boolean;brake:boolean;stee
   if(state.traffic.some(car=>Math.hypot(p.x-car.x,p.y-car.y)<35)){state.phase='failed';state.reason='Bilene kom for nær hverandre. Senk farten tidligere, og hold oversikt over hvor bilen faktisk er.';return;}
   if(state.offRoadTime>4){state.phase='failed';state.reason='Du kjørte ut av veien. Bruk korte styreutslag og slipp A/D for å la rattet rette seg opp.';return;}
   if(state.indicator&&Math.abs(angleDifference(p.angle,state.indicator==='left'?-90:90))<14&&((p.x<370)||(p.x>620)))state.indicator=null;
-  const exit:Route|null=p.y<80&&p.x>398&&p.x<562?'straight':p.x<80&&p.y>278&&p.y<442?'left':p.x>880&&p.y>278&&p.y<442?'right':null;
+  const exit:Route|'back'|null=p.y<80&&p.x>398&&p.x<562?'straight':p.x<80&&p.y>278&&p.y<442?'left':p.x>880&&p.y>278&&p.y<442?'right':p.y>790&&p.x>398&&p.x<562?'back':null;
   if(exit){
-    const targetHeading=exit==='left'?-90:exit==='right'?90:0;
-    if(exit!==state.goal){state.phase='failed';state.reason='Du kjørte ut en annen vei enn den markerte. Følg målmarkøren, og styr selv gjennom svingen.';}
-    else if(state.lane!=='ok'||Math.abs(angleDifference(p.angle,targetHeading))>40){state.phase='failed';state.reason='Du nådde riktig utkjøring, men havnet i feil kjørefelt eller retning. Rett opp bilen før målområdet.';}
-    else{state.phase='success';state.route=exit;state.reason=state.lesson==='priority'?'Trygt framme. De andre vek for deg, og du styrte bilen inn i den markerte utkjøringen.':'Trygt framme. Du styrte til mål uten å hindre eller forstyrre trafikken du hadde vikeplikt for.';}
+    const targetHeading=exit==='left'?-90:exit==='right'?90:exit==='back'?180:0;
+    if(state.lane!=='ok'||Math.abs(angleDifference(p.angle,targetHeading))>40){state.phase='failed';state.reason='Du havnet i feil kjørefelt eller retning. Hold til høyre og rett opp bilen når du kjører ut av krysset.';}
+    else nextJunction(state,exit);
   }
 }

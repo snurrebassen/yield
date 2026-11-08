@@ -1,21 +1,18 @@
 # Yield
 
-Learn basic Norwegian yielding rules by driving through short, interactive road scenarios. The interface and lessons are in Norwegian Bokmål.
+An open-ended Norwegian road-rules practice game. Drive wherever you choose through randomized intersections, with Norwegian Bokmål feedback on yielding and lane position.
 
-## Current version — free steering and a car-relative camera
+## Randomized free driving
 
-- A top-down SVG intersection with Norwegian markings, randomized traffic colours and vehicle shapes, brake lights, and animated indicators.
-- Four exercises: priority from the right, left turns across oncoming traffic, signed yield from both directions, and a scenario where the other drivers must yield to you.
-- Continuous car-relative steering: hold A/D at any point, including through and after the junction. W/S only control speed.
-- A bicycle-model car with independent world position, heading, and wheel angle. A bounded steering guide provides gentle corrections with a lateral dead band; the player can oversteer, understeer, cross into the opposing lane, or leave the road.
-- A car-following, heading-up camera by default, with a fixed overview toggle. A large green destination zone and a bearing-correct off-screen pointer mark the target exit.
-- Lane-departure feedback, steerable front wheels, and touch controls for steering, acceleration, braking, and indicators.
-- Reciprocal priority rules for every driver, smooth braking and resuming, queues, turning NPCs with indicators, and brake lights.
-- Sustained indicators and observed movement refine how other drivers predict your route; the exercise goal remains private to the player. Unclear or misleading signals keep them cautious; a turn signal never overrides priority.
-- Swept-path conflict and merge checks, collision checks, feedback, exact-situation retries, and new traffic variants.
-- Pause, visual route hints, local completion progress, responsive layout, and touch accelerator/brake controls.
+- No lesson sequence, assigned destination, marked target, prescribed turn, or completion checklist.
+- Every junction randomly varies right-hand priority versus signed yield, traffic approaches, turn intentions, spacing, speeds, car count, colours, and body styles.
+- Take any legal exit. A safe passage continues automatically into another randomized junction; the session counts crossings without imposing a route.
+- The same-junction retry uses the original seed to reproduce the rules and traffic exactly. “Nytt tilfeldig kryss” starts a fresh arrangement.
+- Continuous car-relative steering, a soft lane guide with slack, independent world position/heading/wheel angle, and recoverable lane warnings. The guide responds to observed steering and indicators, never to a destination.
+- A heading-up following camera with a fixed overview option, animated indicators, brake lights, visible steering, and simultaneous touch driving controls.
+- All drivers follow reciprocal right-hand, signed-yield, and opposing-left-turn rules. NPCs brake, yield, resume, and queue. Their decisions use signals and actual vehicle movement.
 
-This is an early learning prototype. The traffic model predicts shared crossing/merging points with a vehicle-clearance margin and deterministic response timing. NPCs follow lane paths; the player moves freely. Collision and emergency-braking checks use the player’s actual position, and entry checks predict from the player’s current heading and wheel angle. It does not yet model randomized hesitation or driver personalities. Traffic lights, roundabouts, pedestrians, and cyclists are planned but are not simulated in this version.
+This remains a simplified traffic simulation. Driver response timing is deterministic; randomized hesitation and driver personalities are future work. Traffic lights, roundabouts, pedestrians, and cyclists are not simulated yet. Junction geometry is currently the same four-way layout; the rule and traffic arrangement are randomized. Safe exit transitions reframe the next junction ahead while preserving speed, wheel angle, lateral lane offset, and heading relative to the new road.
 
 ## Run locally
 
@@ -31,47 +28,45 @@ npm test
 npm run build
 ```
 
-The production build is static and written to `dist/`. No backend, account, or API key is needed. Completion progress is stored on the current device using localStorage. The interface uses system font fallbacks if Google Fonts is unavailable.
+The static production build is written to `dist/`. No backend, account, or API key is needed to run locally. Practice state is kept in memory for the current session. System font fallbacks are available when Google Fonts is unavailable.
 
 ## Controls
 
 | Control | Action |
 | --- | --- |
-| W / Up | Hold to accelerate; never selects a route |
-| S / Down | Brake |
+| W / Up | Hold to accelerate |
+| S / Down | Hold to brake |
 | A / Left | Hold to steer left relative to the car |
 | D / Right | Hold to steer right relative to the car |
 | Q / E | Toggle left / right indicator |
 | Space | Pause / resume |
 | Escape | Pause or close help |
 
-Hold W to accelerate and A/D to steer continuously. Release A/D to let the steering wheel centre; gentle guidance helps align the car but never snaps its position onto a track. The lesson sets a destination, not a turn command. Drive to the green exit zone in the correct lane. The camera keeps forward at the top of the screen; choose Overview for a fixed map. Touch controls support simultaneous steering and acceleration/braking. Indicators switch off after a completed turn.
+Release A/D to let the steering wheel centre. Bounded assistance gives gentle corrections without snapping the car to a lane. You can still oversteer, understeer, cross the centre line, or leave the road. W never changes direction. Use the steering, indicator, and accelerator/brake buttons on touch devices. Turn signals cancel after a completed turn.
 
 ## Structure
 
-- `src/engine.ts`: seeded traffic, lane geometry, reciprocal priority, actual-motion conflict prediction, and physical goal detection. Independent of React and the DOM.
-- `src/driving.ts`: bicycle-model motion, soft steering guidance, path projection, lane warnings, camera transforms, and off-screen goal bearings.
-- `src/main.tsx`: SVG scene, controls, lesson selection, help, and feedback.
-- `src/style.css`: responsive interface and map presentation.
-- `tests/engine.test.ts`: safe waiting, unsafe entry, clear-gap completion, pause/braking, deterministic retries, route geometry, mutual NPC/player yielding, NPC-to-NPC yielding, queue spacing, indicator interpretation, continuous steering, free-position collisions, recoverable lane departure, physical goal detection, camera transforms, and goal-pointer bearings.
+- `src/engine.ts`: seeded junction generation, reciprocal priority, traffic, actual-motion conflict prediction, and continuation through freely chosen exits.
+- `src/driving.ts`: bicycle-model motion, soft guidance, path projection, lane warnings, and camera transforms.
+- `src/main.tsx`: SVG scene, free-practice controls, current-junction rule information, help, and feedback.
+- `src/style.css`: responsive game interface.
+- `tests/engine.test.ts`: randomization and retry determinism, arbitrary exits, junction continuation, physics, reciprocal yielding, queue spacing, indicators, collision checks, and camera behaviour.
 - `.openai/hosting.json`: private playable-preview hosting configuration.
 
 ## Rule sources
 
-Lesson wording was checked on 8 November 2026 against primary sources:
+Rule wording was checked on 8 November 2026 against primary sources:
 
-- [Trafikkreglene § 7 — Vikeplikt](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§7): show yielding in good time, traffic from the right, and turning left across opposing traffic.
-- [Trafikkreglene § 14 — Signal og tegn](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§14): turn signals guide other road users.
-- [Skiltforskriften § 6 — sign 202](https://lovdata.no/dokument/SF/forskrift/2005-10-07-1219/§6): yield to traffic in both directions on the crossing road.
+- [Trafikkreglene § 7 — Vikeplikt](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§7).
+- [Trafikkreglene § 14 — Signal og tegn](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§14).
+- [Skiltforskriften § 6 — sign 202](https://lovdata.no/dokument/SF/forskrift/2005-10-07-1219/§6).
 - [Statens vegvesen — traffic rules](https://www.vegvesen.no/trafikkinformasjon/trafikksikkerhet/trafikkregler/).
-
-The game describes its simplified decision checks as practice feedback; it does not claim to certify driving competence.
 
 ## Next increments
 
-1. Tune the continuous steering, soft assistance, and car-relative camera from playtesting; add approach/replay explanations.
-2. STOP and priority-road scenarios, building on reciprocal yielding and the current player-priority exercise.
-3. Traffic-light state machine: red, red/amber, green, amber, all-red clearance, and permitted turning conflicts.
-4. Single-lane roundabouts with entry yielding, exit choice, and indicator guidance.
+1. Tune steering, soft assistance, and the following camera from playtesting.
+2. More road geometries, STOP signs, and priority roads.
+3. Traffic lights with turning conflicts and proper signal sequences.
+4. Single-lane roundabouts with entry yielding and indicator guidance.
 5. Pedestrians, cyclists, driveways, obstructions, and buses leaving stops.
-6. Randomized hesitation and driver behaviour, more seeded traffic patterns, reduced hints, mixed practice, and scenario-specific progression.
+6. Randomized hesitation and driver behaviour.

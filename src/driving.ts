@@ -58,10 +58,3 @@ export function cameraPoint(p:Point,body:Body,follow=true):Point {
   const a=-body.angle*Math.PI/180,c=Math.cos(a),s=Math.sin(a),x=p.x-body.x,y=p.y-body.y;
   return{x:480+x*c-y*s,y:535+x*s+y*c};
 }
-export function goalPointer(p:Point,body:Body,follow=true) {
-  const screen=cameraPoint(p,body,follow),origin=follow?{x:480,y:535}:body;
-  const dx=screen.x-origin.x,dy=screen.y-origin.y;
-  // Ray/viewport intersection keeps the pointer on the correct bearing when off-screen.
-  const scale=Math.min(1,dx>0?(880-origin.x)/dx:dx<0?(80-origin.x)/dx:Infinity,dy>0?(640-origin.y)/dy:dy<0?(90-origin.y)/dy:Infinity);
-  return{x:origin.x+dx*scale,y:origin.y+dy*scale,angle:Math.atan2(dx,-dy)*180/Math.PI,offscreen:scale<1};
-}
