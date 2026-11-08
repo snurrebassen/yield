@@ -1,6 +1,7 @@
 import {memo} from 'react';
 import type {State,Traffic,JunctionRule} from '../core/index.ts';
-function Car({x,y,angle,color,style=0,player=false,braking=false,indicator=null,time=0,wheel=0}:{x:number;y:number;angle:number;color:string;style?:number;player?:boolean;braking?:boolean;indicator?:'left'|'right'|null;time?:number;wheel?:number}){
+import {carFeedback,feedbackPosition} from './feedback.ts';
+function Car({x,y,angle,color,style=0,player=false,braking=false,indicator=null,time=0,wheel=0,reversing=false}:{x:number;y:number;angle:number;color:string;style?:number;player?:boolean;braking?:boolean;indicator?:'left'|'right'|null;time?:number;wheel?:number;reversing?:boolean}){
   const width=style===1?25:23,length=style===2?46:43;
   return <g transform={`translate(${x} ${y}) rotate(${angle})`}>
     {player&&<><circle r="34" fill="#e9c05b" opacity=".12"/><circle r="31" fill="none" stroke="#d4b363" strokeWidth="1" strokeDasharray="3 5"/></>}
@@ -12,21 +13,25 @@ function Car({x,y,angle,color,style=0,player=false,braking=false,indicator=null,
     <path d={`M${-width/2+4} 16 H${width/2-4} L${width/2-3} 12 H${-width/2+3}Z`} fill="#35514d"/>
     <rect x={-width/2+2} y={-length/2+2} width="5" height="3" rx="1" fill="#fff0bb"/><rect x={width/2-7} y={-length/2+2} width="5" height="3" rx="1" fill="#fff0bb"/>
     <rect x={-width/2+2} y={length/2-4} width="5" height="2.5" rx="1" fill={braking?'#ff4238':'#af4741'}/><rect x={width/2-7} y={length/2-4} width="5" height="2.5" rx="1" fill={braking?'#ff4238':'#af4741'}/>
+    {reversing&&<><rect x="-5" y={length/2-5} width="3" height="3" rx=".6" fill="#fffdeb"/><rect x="2" y={length/2-5} width="3" height="3" rx=".6" fill="#fffdeb"/></>}
     {indicator&&Math.floor(time*2.5)%2===0&&<><rect x={indicator==='left'?-width/2-2:width/2-1} y="-18" width="3" height="7" rx="1" fill="#ffbc3a"/><rect x={indicator==='left'?-width/2-2:width/2-1} y="13" width="3" height="6" rx="1" fill="#ffbc3a"/></>}
   </g>;
 }
 function Tree({x,y,r=23}:{x:number;y:number;r?:number}){return <g><ellipse cx={x+6} cy={y+9} rx={r} ry={r*.85} fill="#203d2b" opacity=".07"/><circle cx={x} cy={y} r={r} fill="#a8ba91"/><circle cx={x-5} cy={y-4} r={r*.7} fill="#b5c69e"/><circle cx={x+6} cy={y-7} r={r*.4} fill="#c0cda8"/></g>}
 export function RoadView({state,braking,follow}:{state:State;braking:boolean;follow:boolean}){
+  const feedback=carFeedback(state),label=feedbackPosition(state,follow);
   const p=state.player,event=state.failure?.event??state.warning,focusColor=state.failure?'#bd5747':'#be913d';
   const camera=follow?`translate(480 535) rotate(${-p.angle}) translate(${-p.x} ${-p.y})`:undefined;
   return <svg className="road-map" viewBox="0 0 960 720" role="img" aria-label="Tilfeldig veikryss med fri styring. Du bestemmer hvor du vil kjøre. Kameraet kan følge bilen eller vise oversikt.">
     <defs><pattern id="grain" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="5" cy="8" r=".7" fill="#718763" opacity=".18"/><circle cx="19" cy="21" r=".7" fill="#718763" opacity=".12"/></pattern><pattern id="pavement" width="19" height="19" patternUnits="userSpaceOnUse"><path d="M0 0H19V19" fill="none" stroke="#c8c9bb" strokeWidth=".5"/></pattern></defs>
     <g transform={camera}><StaticRoad rule={state.rule}/>
+    <g className="horn-waves" aria-hidden="true">{state.horns.flatMap(pulse=>{const car=pulse.actorId===-1?state.player:state.traffic.find(car=>car.id===pulse.actorId);if(!car)return[];const age=state.time-pulse.startedAt;return[0,.22].map((delay,i)=>{const t=(age-delay)/.9;return t>=0&&t<=1?<circle key={pulse.id+':'+i} cx={car.x} cy={car.y} r={25+t*65} fill="none" stroke="#d2a24d" strokeWidth={2.5-t} opacity={(1-t)*.8}/>:null;});})}</g>
     {state.traffic.map((car:Traffic)=><Car key={car.id} {...car} time={state.time}/>)}
     <Car {...p} color="#f0cc70" player braking={braking} indicator={state.indicator} time={state.time}/>
 
     {event&&<g className="incident-focus">{event.actorIds.map(id=>{const car=id===-1?state.player:state.traffic.find(car=>car.id===id);return car?<circle key={id} cx={car.x} cy={car.y} r="34" fill="none" stroke={focusColor} strokeWidth="3" strokeDasharray="5 4"/>:null;})}{event.point&&<circle cx={event.point.x} cy={event.point.y} r="8" fill={focusColor} fillOpacity=".2" stroke={focusColor} strokeWidth="2"/>}</g>}
     </g>
+    {feedback&&<g className={'car-feedback '+feedback.tone} transform={`translate(${label.x} ${label.y})`} aria-hidden="true"><rect x="-119" y="-17" width="238" height="34" rx="12"/><text x="0" y="5" textAnchor="middle" fontSize="13" fontWeight="600" fontFamily="system-ui,sans-serif">{feedback.tone==='failure'?'! ':feedback.tone==='warning'?'⚠ ':''}{feedback.text}</text></g>}
   </svg>;
 }
 

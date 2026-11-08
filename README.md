@@ -10,11 +10,13 @@ An open-ended Norwegian road-rules practice game. Drive wherever you choose thro
 - The same-junction retry uses the original seed to reproduce the rules and traffic exactly. “Nytt tilfeldig kryss” starts a fresh arrangement.
 - Continuous car-relative steering, a soft lane guide with slack, independent world position/heading/wheel angle, and recoverable lane warnings. The guide responds to observed steering and indicators, never to a destination.
 - A heading-up following camera with a fixed overview option, animated indicators, brake lights, visible steering, and simultaneous touch driving controls.
-- Unobstructed pause and failure views. The road stays visible, affected cars get simple outlines, and feedback/retry controls stay beside the map.
+- Unobstructed pause and failure views. Short situation warnings stay anchored above/below the player car; the sidebar retains the full explanation and retry controls. Static instructional boxes remain absent from the road.
 - Amber warnings for developing tight gaps and early pressure on other drivers; collisions and clear unsafe entries/forced hard braking freeze the exact incident frame.
 - All drivers follow reciprocal right-hand, signed-yield, and opposing-left-turn rules. NPCs brake, yield, resume, and queue. Their decisions use signals and actual vehicle movement.
+- Genuine NPC waiting cycles trigger coordinated recovery after a delay. Priority is preferred, one car clears at a time, and other cars may back up slowly with their followers when the swept path is free. Normal queues waiting for the player remain queues. No cars disappear or teleport to clear a jam.
+- H or the horn button emits a short horn with expanding visual rings. Selected waiting drivers can honk when they expect priority. Sound can be muted while retaining the rings. A horn never changes the yielding rules.
 
-This remains a simplified traffic simulation. Driver response timing is deterministic; randomized hesitation and driver personalities are future work. Traffic lights, roundabouts, pedestrians, and cyclists are not simulated yet. Junction geometry is currently the same four-way layout; the rule and traffic arrangement are randomized. Safe exit transitions reframe the next junction ahead while preserving speed, wheel angle, lateral lane offset, and heading relative to the new road.
+This remains a simplified traffic simulation. Driver response timing, recovery and horn timing are deterministic; randomized hesitation and driver personalities are future work. Traffic lights, roundabouts, pedestrians, and cyclists are not simulated yet. Junction geometry is currently the same four-way layout; the rule and traffic arrangement are randomized. Safe exit transitions reframe the next junction ahead while preserving speed, wheel angle, lateral lane offset, and heading relative to the new road.
 
 ## Run locally
 
@@ -41,6 +43,7 @@ The static production build is written to `dist/`. `npm run build:core` emits a 
 | A / Left | Hold to steer left relative to the car |
 | D / Right | Hold to steer right relative to the car |
 | Q / E | Toggle left / right indicator |
+| H | Horn with a visible circle wave |
 | Space | Pause / resume |
 | Escape | Pause or close help |
 

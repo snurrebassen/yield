@@ -10,3 +10,5 @@ export {captureFrame,setPaused} from './events.ts';
 export {vehiclesOverlap} from './collision.ts';
 export {angleDifference,laneStatus,pointAlong,projectPath,stepDriving} from './physics.ts';
 export type {Body,LaneStatus,Projection} from './physics.ts';
+
+export {soundHorn} from './horn.ts';

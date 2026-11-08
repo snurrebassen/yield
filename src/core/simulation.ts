@@ -6,6 +6,8 @@ import {carActor,playerActor,targetFor,predict} from './traffic.ts';
 import {evaluateTraffic} from './evaluation.ts';
 import {fail} from './events.ts';
 import {FIXED_STEP} from './config.ts';
+import {coordinateRecovery,guardRecoveryMotion} from './recovery.ts';
+import {updateHorns} from './horn.ts';
 function integrate(state:State,dt:number,input:Input) {
   if(state.phase!=='driving')return;
   state.time+=dt;state.frameNumber++;
@@ -22,16 +24,27 @@ function integrate(state:State,dt:number,input:Input) {
   if(state.indicator===state.route&&Math.abs(angle)>20)state.indicatorUsed=state.indicator;
   const player=playerActor(state),before=state.traffic.map(carActor),actors=[player,...before],prediction=predict(state);
   const decisions=before.map(car=>targetFor(car,actors,state,prediction));
+  coordinateRecovery(state,before,decisions);
+  const previous=state.recovery?state.traffic.map(car=>({...car})):[];
   state.traffic.forEach((car,i)=>{
     const decision=decisions[i],old=car.speed;
-    car.speed=decision.speed<old?Math.max(decision.speed,old-95*dt):Math.min(decision.speed,old+30*dt);
-    const desired=car.distance!+car.speed*dt;
-    car.distance=Math.min(desired,decision.stop);
-    if(car.distance<desired)car.speed=0;
+    if(decision.recovery==='backing'){
+      car.speed=Math.max(decision.speed,Math.min(0,old)-25*dt);
+      car.distance=Math.max(decision.stop,car.distance!+car.speed*dt);
+      if(car.distance<=decision.stop+.001)car.speed=0;
+    }else{
+      car.speed=decision.speed<old?Math.max(decision.speed,old-95*dt):Math.min(decision.speed,Math.max(0,old)+30*dt);
+      const desired=car.distance!+car.speed*dt;car.distance=Math.min(desired,decision.stop);
+      if(car.distance<desired)car.speed=0;
+    }
+    car.reversing=car.speed<-.1;
     car.braking=car.speed<old-.1||(car.speed<1&&!!decision.reason);car.waitingFor=decision.reason;
     Object.assign(car,lanePose(car.direction,car.route!,car.distance));
     car.indicator=car.route==='straight'||car.distance<40||car.distance>routeLength(car.route!)-230?null:car.route;
   });
+  guardRecoveryMotion(state,previous,decisions);
+  state.traffic.forEach((car,i)=>{car.blockedBy=decisions[i].blockedBy;car.stoppedFor=Math.abs(car.speed)<1&&decisions[i].blockedBy!==null?(car.stoppedFor??0)+dt:0;});
+  updateHorns(state,decisions);
   evaluateTraffic(state,player,before,state.traffic.map(carActor),decisions,prediction,dt);
   if(state.failure)return;
   if(state.offRoadTime>4){fail(state,'off-road');return;}

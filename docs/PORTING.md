@@ -16,7 +16,7 @@ npm run build:core
 ```js
 import {
   createState, createClock, advanceSimulation, setPaused, toggleIndicator,
-  captureFrame,
+  captureFrame, soundHorn,
 } from './dist-core/index.js';
 
 const state = createState(12345); // seed is explicit and deterministic
@@ -29,12 +29,13 @@ function update(elapsedSeconds, controls) {
     brake: controls.braking,
     steer: controls.steerAxis, // -1 left, 0 neutral, +1 right; car-relative
   });
-  render(captureFrame(state), state.warning, state.failure);
+  render(captureFrame(state), state.warning, state.failure, state.horns);
 }
 
 setPaused(state, true);
 setPaused(state, false);
 toggleIndicator(state, 'left'); // calling again cancels; right switches sides
+soundHorn(state); // player horn; audio/rendering remain host responsibilities
 ```
 
 Physics runs at 60 fixed steps per second. The clock caps catch-up to 250 ms per host call and drops paused elapsed time. Rendering may run at any frequency. The web adapter renders at up to 30 fps and memoizes static road geometry.
@@ -50,6 +51,8 @@ Coordinates are logical scene units, Y points downward, heading 0 points up, and
 | `geometry.ts` | Cached lane paths, segment bounds, crossing and merge geometry |
 | `physics.ts` | Free player motion, soft steering assistance, projections and lane status |
 | `traffic.ts` | Reciprocal priority, NPC target speeds, queues and shared step predictions |
+| `recovery.ts` | Waiting-cycle detection, priority-aware coordination, rear-path checks and safe backing with followers |
+| `horn.ts` | Rate-limited player/NPC horn pulses, independent of sound hardware |
 | `evaluation.ts` | Warning versus failure decisions based on observed motion and reactions |
 | `collision.ts` | Oriented vehicle-rectangle overlap |
 | `events.ts` | Warning deduplication, bounded history, pause and immutable failure captures |
@@ -78,3 +81,13 @@ State, events and snapshots are JSON-compatible data. A host may transfer `JSON.
 Event history is capped at 64 records, warning cooldowns reset at each junction, geometry/segment lengths are cached, intersection tests use bounding-box rejection, and the player's future path is predicted once per simulation step and shared by traffic and evaluation.
 
 Run `npm test` for warning/failure boundaries, exact freeze frames, pause, collision geometry, frame-rate independence, state transfer, driving and reciprocal yielding.
+
+## Queues, deadlocks and horns
+
+Ordinary queues are allowed. Recovery only starts after a group of stopped NPCs has formed a circular waiting dependency for 2.5 seconds. It prefers the vehicle with fewer yielding obligations, checks complete swept paths, and may ask other vehicles and their queued followers to reverse slowly. A car that can safely clear without backing may be released directly. Recovery never moves the player, removes vehicles, or authorizes overlap. Each live step rechecks clearance, including a player moving into a previously free space. A stalled plan times out and is re-evaluated; if no physical escape is safe, cars continue waiting and retry as space changes. A legally waiting queue that ends at the player is not treated as a deadlock.
+
+`state.recovery`, car `stoppedFor`, `blockedBy`, and `reversing` fields are plain transfer data. NPC reversing uses negative speed along its own lane path. Pause freezes the manoeuvre; JSON transfer preserves it. The existing exact failure capture remains separate from traffic coordination.
+
+`state.horns` contains bounded, short-lived `{id, actorId, startedAt}` pulses. `hornSequence` stays monotonic across junctions. `soundHorn(state)` requests the player's horn, with a cooldown; NPCs may emit a pulse after waiting when they expect priority. A horn can request a fresh deadlock check, but does not change legal priority or skip the clearance checks. Render expanding rings at the actor pose, and optionally synthesize sound in the host. The web adapter uses Web Audio after a user gesture and includes a mute toggle; neither Web Audio nor its timers enter the reusable core.
+
+`src/ui/feedback.ts` maps situation codes to short car-adjacent labels and screen positions. These labels are kept upright outside the rotating world transform; expanded Norwegian explanations remain in the sidebar.

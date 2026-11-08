@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {carFeedback,feedbackPosition} from '../src/ui/feedback.ts';
 import {angleDifference,cameraPoint,laneStatus,pointAlong,projectPath,steeringInput,stepDriving} from '../src/driving.ts';
-import {createClock,advanceSimulation,stepSimulation,captureFrame,setPaused,vehiclesOverlap,createState,guideRoute,tick,poseAt,routeLength,makeTraffic,routePoints,toggleIndicator,lanePose,mustYield,pathConflicts,type State,type Indicator,type Traffic,type Route,type JunctionRule} from '../src/engine.ts';
+import {createClock,advanceSimulation,stepSimulation,captureFrame,setPaused,vehiclesOverlap,soundHorn,createState,guideRoute,tick,poseAt,routeLength,makeTraffic,routePoints,toggleIndicator,lanePose,mustYield,pathConflicts,type State,type Indicator,type Traffic,type Route,type JunctionRule} from '../src/engine.ts';
 
 function fixture(rule:JunctionRule='unsigned'):State{const s=createState(42);s.rule=rule;s.traffic=[];return s;}
 function place(s:State,distance:number,route:Route='straight'){s.player={...poseAt(route,distance),wheel:0};s.route=route;s.distance=distance;}
@@ -133,4 +134,52 @@ test('warning history is deduplicated and bounded during long practice',async()=
   const {warn}=await import('../src/core/events.ts');const s=fixture();
   for(let i=0;i<100;i++){s.time=i*4;warn(s,'yield-caution',1);}
   assert.equal(s.events.length,64);const id=s.warning!.id;for(let i=0;i<100;i++)warn(s,'yield-caution',1);assert.equal(s.warning!.id,id);assert.equal(s.events.length,64);
+});
+
+function lockedJunction():State {
+  const s=fixture('signed');s.phase='driving';s.player.y=480;
+  s.traffic=[npc('east','left',318,0),npc('west','straight',238,1),npc('east','left',258,2)];s.traffic.forEach(car=>car.speed=0);return s;
+}
+test('the screenshot-style traffic lock resolves with coordinated backing and legal priority',()=>{
+  const s=lockedJunction(),backed=new Set<number>();let chosen:number|null=null,movingDuringWait=false;
+  for(let i=0;i<1800;i++){
+    const previous=s.traffic.map(car=>car.distance!);stepSimulation(s,{gas:false,brake:true});
+    if(s.time<2)assert.equal(s.recovery,null);
+    if(s.recovery)chosen??=s.recovery.winnerId;
+    for(let a=0;a<s.traffic.length;a++){const car=s.traffic[a];if(car.reversing)backed.add(car.id);assert.ok(Math.abs(car.distance!-previous[a])<1.1,'no teleporting');for(let b=a+1;b<s.traffic.length;b++)assert.equal(vehiclesOverlap(car,s.traffic[b]),false);assert.equal(vehiclesOverlap(car,s.player),false);}
+    if(s.time>20&&s.traffic.every(car=>car.speed>20))movingDuringWait=true;
+  }
+  assert.equal(s.phase,'driving');assert.equal(chosen,1);assert.deepEqual([...backed].sort(),[0,2]);assert.ok(movingDuringWait);assert.ok(s.traffic.every(car=>car.distance!>600));
+});
+test('normal yielding to the player remains a queue instead of being forcibly overridden',()=>{
+  const s=fixture();s.phase='driving';place(s,160);s.traffic=[npc('east','straight',120,1),npc('east','straight',35,2)];advance(s,15);
+  assert.equal(s.recovery,null);assert.ok(s.traffic.every(car=>!car.reversing));assert.ok(s.traffic[0].speed<1);assert.equal(s.phase,'driving');
+});
+test('recovery freezes on pause and resumes deterministically after state transfer',()=>{
+  const a=lockedJunction();advance(a,4);assert.ok(a.recovery);setPaused(a,true);const frozen=structuredClone(a);tick(a,.25,{gas:false,brake:true});assert.deepEqual(a,frozen);
+  setPaused(a,false);const b:State=JSON.parse(JSON.stringify(a));for(let i=0;i<900;i++){stepSimulation(a,{gas:false,brake:true});stepSimulation(b,{gas:false,brake:true});}assert.deepEqual(a,b);assert.equal(a.recovery,null);
+});
+test('live recovery stops a reversing car if the player moves into the available space',()=>{
+  const s=lockedJunction();advance(s,3);assert.equal(s.recovery?.phase,'backing');
+  const car=s.traffic.filter(car=>car.reversing).sort((a,b)=>a.distance!-b.distance!)[0];assert.ok(car);
+  const blockedPose=lanePose(car.direction,car.route!,car.distance!-60);s.player={...blockedPose,wheel:0};const before=car.distance!;assert.equal(vehiclesOverlap(car,s.player),false);
+  for(let i=0;i<120&&s.phase==='driving';i++)stepSimulation(s,{gas:false,brake:true});
+  assert.ok(before-car.distance!<8);assert.equal(car.speed,0);assert.equal(s.phase,'driving');assert.equal(vehiclesOverlap(car,s.player),false);
+});
+test('the player horn is rate-limited and never changes priority rules',()=>{
+  const s=fixture('signed');s.phase='driving';assert.equal(soundHorn(s),true);assert.equal(soundHorn(s),false);assert.equal(s.horns[0].actorId,-1);assert.equal(s.hornSequence,1);
+  assert.equal(mustYield({direction:'north',route:'straight'},{direction:'east',route:'straight'},s.rule),true);
+  advance(s,1.3);assert.equal(soundHorn(s),true);setPaused(s,true);assert.equal(soundHorn(s),false);
+});
+test('waiting drivers can honk and pulses expire without unbounded growth',()=>{
+  const s=lockedJunction();advance(s,5);assert.ok(s.hornSequence>0);assert.ok(s.horns.every(pulse=>s.time-pulse.startedAt<1.15));
+  assert.ok(s.traffic.some(car=>car.lastHornAt!==undefined));advance(s,25);assert.ok(s.horns.length<=16);assert.equal(s.phase,'driving');
+});
+test('short warning text is anchored above the car in both camera modes',()=>{
+  const s=situation(521,490,0,50,'west',120);stepSimulation(s,{gas:false,brake:false});assert.equal(carFeedback(s)?.tone,'warning');assert.ok(carFeedback(s)!.text.length<30);
+  const follow=feedbackPosition(s,true);assert.equal(follow.x,480);assert.ok(follow.y<535);
+  const overview=feedbackPosition(s,false);assert.equal(overview.x,s.player.x);assert.ok(overview.y<s.player.y);
+});
+test('serious incident text takes precedence over coordination or minor feedback',()=>{
+  const s=situation(521,415,0,20,'east',331);stepSimulation(s,{gas:false,brake:false});assert.equal(carFeedback(s)?.tone,'failure');assert.equal(carFeedback(s)?.text,'Kollisjon!');
 });
