@@ -1,3 +1,4 @@
+import {stepWorld} from './worldSimulation.ts';
 import type {State,Input,Route} from './types.ts';
 import {angleDifference,laneStatus,projectPath,stepDriving} from './physics.ts';
 import {routePoints,lanePose,routeLength} from './geometry.ts';
@@ -9,6 +10,7 @@ import {FIXED_STEP} from './config.ts';
 import {coordinateRecovery,guardRecoveryMotion} from './recovery.ts';
 import {updateHorns} from './horn.ts';
 function integrate(state:State,dt:number,input:Input) {
+  if(state.world){stepWorld(state,dt,input);return;}
   if(state.phase!=='driving')return;
   state.time+=dt;state.frameNumber++;
   if(state.warning&&state.time>state.warningUntil)state.warning=null;

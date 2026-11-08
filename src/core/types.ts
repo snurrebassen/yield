@@ -1,7 +1,8 @@
 import type {Body,LaneStatus} from './physics.ts';
+import type {WorldState} from './world.ts';
 export type Route = 'straight' | 'left' | 'right';
 export type Indicator = 'left' | 'right' | null;
-export type JunctionRule = 'unsigned' | 'signed';
+export type JunctionRule = 'unsigned' | 'signed' | 'priority' | 'roundabout';
 export type Phase = 'ready' | 'driving' | 'paused' | 'failed';
 export type Point = { x: number; y: number };
 export type Direction = 'north' | 'east' | 'south' | 'west';
@@ -11,7 +12,7 @@ export type Traffic = {
   route?: Route; distance?: number; cruiseSpeed?: number; indicator?: Indicator;
   braking?: boolean; reversing?: boolean; stoppedFor?:number; blockedBy?:number|null; lastHornAt?:number; waitingFor?: 'priority' | 'queue' | 'safety' | null;
 };
-export type State={phase:Phase;rule:JunctionRule;seed:number;time:number;distance:number;speed:number;route:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:EventCode|null;slowed:boolean;crossings:number;notice:NoticeCode|null;noticeUntil:number;events:TrafficEvent[];eventSequence:number;warning:TrafficEvent|null;warningUntil:number;warningCooldown:Record<string,number>;failure:Failure|null;frameNumber:number;recovery:Recovery|null;recoveryCheckAt:number;horns:HornPulse[];hornSequence:number;playerHornAt:number};
+export type State={phase:Phase;rule:JunctionRule;seed:number;time:number;distance:number;speed:number;route:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:EventCode|null;slowed:boolean;crossings:number;notice:NoticeCode|null;noticeUntil:number;events:TrafficEvent[];eventSequence:number;warning:TrafficEvent|null;warningUntil:number;warningCooldown:Record<string,number>;failure:Failure|null;frameNumber:number;recovery:Recovery|null;recoveryCheckAt:number;horns:HornPulse[];hornSequence:number;playerHornAt:number;world?:WorldState};
 export type Actor={id:number;direction:Direction;route:Route;distance:number;speed:number;cruiseSpeed:number;pose?:Point & {angle:number}};
 
 export type Input={gas:boolean;brake:boolean;steer?:number};

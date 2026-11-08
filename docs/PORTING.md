@@ -15,11 +15,11 @@ npm run build:core
 
 ```js
 import {
-  createState, createClock, advanceSimulation, setPaused, toggleIndicator,
+  createWorldState, createClock, advanceSimulation, setPaused, toggleIndicator,
   captureFrame, soundHorn,
 } from './dist-core/index.js';
 
-const state = createState(12345); // seed is explicit and deterministic
+const state = createWorldState(12345); // seed is explicit and deterministic
 const clock = createClock();
 state.phase = 'driving';
 
@@ -29,7 +29,7 @@ function update(elapsedSeconds, controls) {
     brake: controls.braking,
     steer: controls.steerAxis, // -1 left, 0 neutral, +1 right; car-relative
   });
-  render(captureFrame(state), state.warning, state.failure, state.horns);
+  render(captureFrame(state), state.world, state.warning, state.failure, state.horns);
 }
 
 setPaused(state, true);
@@ -58,11 +58,11 @@ Coordinates are logical scene units, Y points downward, heading 0 points up, and
 | `events.ts` | Warning deduplication, bounded history, pause and immutable failure captures |
 | `simulation.ts`, `clock.ts` | Ordered simulation steps and host timing adapter |
 
-The scene is currently a four-way junction. Porting the renderer does not require changing the simulation. Supporting a different road layout requires changing the geometry, lane classifier, spawn/exit rules and visual map together; the code does not pretend those coordinates are already a generic road-network editor.
+`createWorldState` enables the continuous world. `createState` retains the original isolated-junction harness and its deterministic regression fixtures. `simulation.ts` dispatches by the optional `state.world` field. The world generator, geometry, streaming budgets and plain graph types live in `world.ts`; `worldSimulation.ts` owns continuous driving, lane classification, priority, node reservations, queueing and road/junction transitions. The SVG world adapter is `ui/WorldView.tsx`. No renderer or host APIs enter these core modules.
 
 ## Events and reviewing a failure
 
-The renderer translates stable event codes into UI text. `src/ui/messages.ts` is the Norwegian web adapter's copy. Event records contain an ID, step number, junction-local time, seed, severity, code, actor IDs, optional world point, and numerical evidence. Player ID is `-1`; NPC IDs are local to the junction.
+The renderer translates stable event codes into UI text. `src/ui/messages.ts` is the Norwegian web adapter's copy. Event records contain an ID, step number, simulation time, seed, severity, code, actor IDs, optional world point, and numerical evidence. Player ID is `-1`; NPC IDs are stable across the streamed world session (local to the junction in the legacy harness).
 
 - `yield-caution`: a developing tight gap, without stopping the simulation.
 - `priority-pressure`: cautious braking in response to the player's approach, before a confirmed junction obstruction.
@@ -91,3 +91,17 @@ Ordinary queues are allowed. Recovery only starts after a group of stopped NPCs 
 `state.horns` contains bounded, short-lived `{id, actorId, startedAt}` pulses. `hornSequence` stays monotonic across junctions. `soundHorn(state)` requests the player's horn, with a cooldown; NPCs may emit a pulse after waiting when they expect priority. A horn can request a fresh deadlock check, but does not change legal priority or skip the clearance checks. Render expanding rings at the actor pose, and optionally synthesize sound in the host. The web adapter uses Web Audio after a user gesture and includes a mute toggle; neither Web Audio nor its timers enter the reusable core.
 
 `src/ui/feedback.ts` maps situation codes to short car-adjacent labels and screen positions. These labels are kept upright outside the rotating world transform; expanded Norwegian explanations remain in the sidebar.
+
+## Streamed world contract
+
+`state.world` owns a bounded graph (`nodes`, `roads`), active node/entry, traffic (`cars`), persistent node reservations (`owners`) and streaming counters. Player and traffic poses use absolute world coordinates. Ports 0/1/2/3 correspond to north/east/south/west relative to a node's angle. Each link caches a cubic centreline and two offset directional lanes. Junction paths are cached outside state; roundabouts use entry/exit curves and a counterclockwise ring outside the central island. A jittered cell topology avoids accidental crossing roads and cumulative orientation drift. Generation is deterministic for a seed and traversal history.
+
+`WORLD_BUDGET` sets two-link prefetch, 28 nodes, 36 roads and 72 cars. Near simulation runs at 60 Hz, far cars beyond 1,250 units update at 5 Hz, drawing is limited to 1,050 units, and cars beyond 3,500 units are retired. Far cars retain IDs and scalar progress on cached paths. Cars wait at the generated frontier until an onward connection exists. Nodes outside the two-link neighbourhood are retired when distant; revisiting may regenerate traffic rather than persist an unlimited world history.
+
+`state.traffic` is the near subset used by warnings, horn rings, collisions and snapshots. It shares live objects with `world.cars`; the next simulation step rebuilds it after JSON transfer. Queue identity uses node/entry/road keys, not JavaScript path-array identity. A failure freezes the entire live state; its compact `SceneFrame` retains nearby vehicle evidence, while `state.world` supplies the frozen road graph. A standalone historical scene renderer must retain both.
+
+World admission is deliberately conservative. One NPC reserves an entire junction, including a roundabout, until it clears. Circular waits receive a persistent priority-ranked courtesy reservation after 2.5 seconds; it does not override player priority or collision clearance. Normal queues can wait for the player. The legacy `recovery.ts` backing coordinator is used only by the isolated-junction harness, not the streamed network. World warnings/violations use physical position and short-horizon closing conflicts; these remain training heuristics rather than a complete traffic-law model.
+
+The web host captures a checkpoint when the active node changes and restores it on retry. Its north-up overview stays centred on the player; heading-up view rotates around the player. Both keep warning labels in screen coordinates. Traffic lights, narrow driveways and multi-car roundabout circulation remain extensions.
+
+Run `npm run bench:world` for a repeatable graph/traffic stress check and timing distribution. Timing excludes React, SVG layout and display rendering; check those on target devices separately.

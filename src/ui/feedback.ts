@@ -17,6 +17,6 @@ export function carFeedback(state:State):{text:string;tone:'warning'|'failure'|'
   return null;
 }
 export function feedbackPosition(state:State,follow:boolean){
-  const car=cameraPoint(state.player,state.player,follow);
+  const car=state.world&&!follow?{x:480,y:360}:cameraPoint(state.player,state.player,follow);
   return{x:Math.max(120,Math.min(840,car.x)),y:car.y>85?Math.max(35,Math.min(650,car.y-62)):Math.min(650,car.y+65)};
 }

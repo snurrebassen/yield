@@ -1,3 +1,4 @@
+import {WorldView} from './WorldView.tsx';
 import {memo} from 'react';
 import type {State,Traffic,JunctionRule} from '../core/index.ts';
 import {carFeedback,feedbackPosition} from './feedback.ts';
@@ -21,12 +22,12 @@ function Tree({x,y,r=23}:{x:number;y:number;r?:number}){return <g><ellipse cx={x
 export function RoadView({state,braking,follow}:{state:State;braking:boolean;follow:boolean}){
   const feedback=carFeedback(state),label=feedbackPosition(state,follow);
   const p=state.player,event=state.failure?.event??state.warning,focusColor=state.failure?'#bd5747':'#be913d';
-  const camera=follow?`translate(480 535) rotate(${-p.angle}) translate(${-p.x} ${-p.y})`:undefined;
-  return <svg className="road-map" viewBox="0 0 960 720" role="img" aria-label="Tilfeldig veikryss med fri styring. Du bestemmer hvor du vil kjøre. Kameraet kan følge bilen eller vise oversikt.">
+  const camera=follow?`translate(480 535) rotate(${-p.angle}) translate(${-p.x} ${-p.y})`:state.world?`translate(480 360) translate(${-p.x} ${-p.y})`:undefined;
+  return <svg className="road-map" viewBox="0 0 960 720" role="img" aria-label="Sammenhengende veinett med fri styring. Du bestemmer hvor du vil kjøre. Kameraet kan følge bilen eller vise oversikt.">
     <defs><pattern id="grain" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="5" cy="8" r=".7" fill="#718763" opacity=".18"/><circle cx="19" cy="21" r=".7" fill="#718763" opacity=".12"/></pattern><pattern id="pavement" width="19" height="19" patternUnits="userSpaceOnUse"><path d="M0 0H19V19" fill="none" stroke="#c8c9bb" strokeWidth=".5"/></pattern></defs>
-    <g transform={camera}><StaticRoad rule={state.rule}/>
+    <g transform={camera}>{state.world?<WorldView world={state.world} player={p}/>:<StaticRoad rule={state.rule}/>}
     <g className="horn-waves" aria-hidden="true">{state.horns.flatMap(pulse=>{const car=pulse.actorId===-1?state.player:state.traffic.find(car=>car.id===pulse.actorId);if(!car)return[];const age=state.time-pulse.startedAt;return[0,.22].map((delay,i)=>{const t=(age-delay)/.9;return t>=0&&t<=1?<circle key={pulse.id+':'+i} cx={car.x} cy={car.y} r={25+t*65} fill="none" stroke="#d2a24d" strokeWidth={2.5-t} opacity={(1-t)*.8}/>:null;});})}</g>
-    {state.traffic.map((car:Traffic)=><Car key={car.id} {...car} time={state.time}/>)}
+    {state.traffic.filter(car=>!state.world||Math.hypot(car.x-p.x,car.y-p.y)<1050).map((car:Traffic)=><Car key={car.id} {...car} time={state.time}/>)}
     <Car {...p} color="#f0cc70" player braking={braking} indicator={state.indicator} time={state.time}/>
 
     {event&&<g className="incident-focus">{event.actorIds.map(id=>{const car=id===-1?state.player:state.traffic.find(car=>car.id===id);return car?<circle key={id} cx={car.x} cy={car.y} r="34" fill="none" stroke={focusColor} strokeWidth="3" strokeDasharray="5 4"/>:null;})}{event.point&&<circle cx={event.point.x} cy={event.point.y} r="8" fill={focusColor} fillOpacity=".2" stroke={focusColor} strokeWidth="2"/>}</g>}

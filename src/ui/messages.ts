@@ -1,5 +1,7 @@
 import type {JunctionRule,EventCode,NoticeCode,State,TrafficEvent} from '../core/types.ts';
 export const ruleInfo:Record<JunctionRule,{title:string;description:string;source:string}>={
+  priority:{title:'Forkjørsveg',description:'Sideveiene er skiltet med vikeplikt. Følg likevel med på møtende trafikk når du svinger til venstre, og gi tydelig tegn.',source:'Skiltforskriften § 6 · Trafikkreglene § 7'},
+  roundabout:{title:'Rundkjøring',description:'Vik for trafikk som allerede er i rundkjøringen. Kjør mot klokken, hold lav fart og blink til høyre før du kjører ut.',source:'Statens vegvesen · Kjøring i rundkjøringer'},
   unsigned:{title:'Høyreregelen',description:'Her er det ingen vikepliktskilt. Vik for kjøretøy fra høyre. Når du svinger til venstre, må du også vike for møtende trafikk som krysser ruten din. De andre bilene følger de samme reglene.',source:'Trafikkreglene § 7'},
   signed:{title:'Skiltet vikeplikt',description:'Vikepliktskiltet betyr at du skal vike for kjørende i begge retninger på den kryssende veien. Velg selv om du vil til venstre, rett fram eller til høyre, og vent på en trygg luke.',source:'Skiltforskriften, skilt 202 · Trafikkreglene § 7'},
 };
@@ -15,5 +17,6 @@ export function noticeMessage(code:NoticeCode|null):string{return code==='signal
 
 export function affectedDriver(state:State,event:TrafficEvent):string {
   const id=event.actorIds.find(id=>id!==-1),car=state.traffic.find(car=>car.id===id);
+  if(state.world&&car){const worldCar=state.world.cars.find(c=>c.id===id);if(worldCar){const relative=(worldCar.entry-state.world.entry+4)%4;return relative===3?'Bil fra høyre':relative===1?'Bil fra venstre':relative===2?'Møtende bil':'Bil på samme innkjøring';}}
   return car?.direction==='west'?'Bil fra høyre':car?.direction==='east'?'Bil fra venstre':car?.direction==='south'?'Møtende bil':car?'Annen bil':'';
 }

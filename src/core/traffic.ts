@@ -6,6 +6,7 @@ export function mustYield(a:Pick<Actor,'direction'|'route'>,b:Pick<Actor,'direct
   if(a.direction===b.direction)return false;
   const av=a.direction==='north'||a.direction==='south',bv=b.direction==='north'||b.direction==='south';
   if(rule==='signed'&&av!==bv)return av;
+  if(rule==='priority'&&av!==bv)return !av;
   const diff=(heading[b.direction]-heading[a.direction]+360)%360;
   return diff===270 || (diff===180&&a.route==='left'&&b.route!=='left');
 }

@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && npm run build:core && vite build",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "build:core": "tsc -p tsconfig.core.json && node scripts/finalize-core.mjs"
+    "build:core": "tsc -p tsconfig.core.json && node scripts/finalize-core.mjs",
+    "bench:world": "node --experimental-strip-types scripts/benchmark-world.ts"
   },
   "dependencies": {
     "react": "^19.0.0",

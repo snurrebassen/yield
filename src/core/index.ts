@@ -12,3 +12,6 @@ export {angleDifference,laneStatus,pointAlong,projectPath,stepDriving} from './p
 export type {Body,LaneStatus,Projection} from './physics.ts';
 
 export {soundHorn} from './horn.ts';
+
+export * from './world.ts';
+export {createWorldState,worldGuide,worldLane} from './worldSimulation.ts';
