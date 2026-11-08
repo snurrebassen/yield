@@ -1,7 +1,7 @@
 import type {State,EventCode,TrafficEvent,Point,SceneFrame} from './types.ts';
 import {EVENT_LIMIT} from './config.ts';
 export function captureFrame(state:State):SceneFrame {
-  return{frame:state.frameNumber,time:state.time,seed:state.seed,rule:state.rule,player:{...state.player},speed:state.speed,traffic:state.traffic.map(car=>({...car}))};
+  return{frame:state.frameNumber,time:state.time,seed:state.seed,rule:state.rule,player:{...state.player},speed:state.speed,speedLimit:state.speedLimit,traffic:state.traffic.map(car=>({...car}))};
 }
 function record(state:State,code:EventCode,severity:TrafficEvent['severity'],actorIds:number[],point:Point|null,facts:Record<string,number>):TrafficEvent {
   const event:TrafficEvent={id:++state.eventSequence,frame:state.frameNumber,time:state.time,seed:state.seed,severity,code,actorIds:[...actorIds],point:point?{...point}:null,facts:{...facts}};

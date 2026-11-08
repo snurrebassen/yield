@@ -31,7 +31,7 @@ test('streaming along 80 roads keeps bounded data and prefetches the onward rout
 });
 test('accelerating follows world coordinates continuously without scene resets',()=>{
  const s=createWorldState(41);s.world!.cars=[];s.world!.nodes.forEach(n=>n.spawned=true);s.phase='driving';let previous={...s.player};
- for(let i=0;i<1800&&s.phase==='driving';i++){stepSimulation(s,{gas:true,brake:false});assert.ok(Math.hypot(s.player.x-previous.x,s.player.y-previous.y)<1.6);previous={...s.player};}
+ for(let i=0;i<1800&&s.phase==='driving';i++){stepSimulation(s,{gas:s.speed<88,brake:false});assert.ok(Math.hypot(s.player.x-previous.x,s.player.y-previous.y)<1.6);previous={...s.player};}
  assert.equal(s.phase,'driving');assert.ok(s.distance>1500);assert.ok(s.crossings>=1);assert.ok(Math.hypot(s.player.x,s.player.y)>600);
 });
 test('world lanes and guidance follow curved links and distinguish opposing traffic',()=>{
@@ -53,7 +53,7 @@ test('world state can be transferred and resumed with bounded far traffic update
 });
 test('the roundabout island is off-road and the soft guide can negotiate its ring',()=>{
  const s=createWorldState(2),node=s.world!.nodes[0];assert.equal(node.kind,'roundabout');s.player.x=node.x;s.player.y=node.y;assert.equal(worldLane(s),'off-road');
- const drive=createWorldState(2);drive.world!.cars=[];drive.world!.nodes.forEach(n=>n.spawned=true);drive.phase='driving';for(let i=0;i<1800;i++)stepSimulation(drive,{gas:true,brake:false});assert.equal(drive.phase,'driving');assert.ok(drive.crossings>=1);
+ const drive=createWorldState(2);drive.world!.cars=[];drive.world!.nodes.forEach(n=>n.spawned=true);drive.phase='driving';for(let i=0;i<1800;i++)stepSimulation(drive,{gas:drive.speed<88,brake:false});assert.equal(drive.phase,'driving');assert.ok(drive.crossings>=1);
 });
 test('courtesy release persists until the selected vehicle has cleared a circular wait',()=>{
  const s=createWorldState(7);s.phase='driving';for(let i=0;i<3600;i++)stepSimulation(s,{gas:false,brake:true});

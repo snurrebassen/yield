@@ -1,13 +1,17 @@
+import type {SpeedLimit} from './speed.ts';
 import type {Point,Route,Traffic,JunctionRule} from './types.ts';
 import type {Body} from './physics.ts';
 import {angleDifference,pointAlong,projectPath} from './physics.ts';
 import {random} from './scenario.ts';
+export type TrafficDensity='none'|'low'|'normal'|'high';
+export const TRAFFIC_DENSITY={none:0,low:.4,normal:1,high:2.5} as const;
+export type WorldSettings={trafficDensity:TrafficDensity};
 export type Port=0|1|2|3;
 export type PlaceKind='cross'|'t-left'|'t-right'|'side-yield'|'priority'|'roundabout';
-export type WorldNode={id:number;seed:number;cx:number;cy:number;x:number;y:number;angle:number;kind:PlaceKind;arms:Port[];priority:Port[];connections:Partial<Record<Port,number>>;spawned:boolean};
-export type WorldRoad={id:number;a:number;b:number;ap:Port;bp:Port;points:Point[];forward:Point[];backward:Point[];width:number};
+export type WorldNode={id:number;seed:number;cx:number;cy:number;x:number;y:number;angle:number;kind:PlaceKind;speedLimit:SpeedLimit;arms:Port[];priority:Port[];connections:Partial<Record<Port,number>>;spawned:boolean};
+export type WorldRoad={id:number;a:number;b:number;ap:Port;bp:Port;points:Point[];forward:Point[];backward:Point[];width:number;speedLimit:SpeedLimit};
 export type WorldCar=Traffic & {path:Point[];mode:'road'|'junction';nodeId:number;entry:Port;exit:Port;roadId:number|null;forward:boolean;progress:number};
-export type WorldState={seed:number;nodes:WorldNode[];roads:WorldRoad[];cars:WorldCar[];activeNodeId:number;entry:Port;nextCarId:number;nextRoadId:number;elapsedFar:number;streamAt:number;enteredNodeId:number|null;owners:Record<number,number>;generated:number;retired:number;playerRoadId:number|null};
+export type WorldState={seed:number;settings:WorldSettings;nodes:WorldNode[];roads:WorldRoad[];cars:WorldCar[];activeNodeId:number;entry:Port;nextCarId:number;nextRoadId:number;elapsedFar:number;streamAt:number;enteredNodeId:number|null;owners:Record<number,number>;generated:number;retired:number;playerRoadId:number|null};
 export const WORLD_BUDGET={nodes:28,roads:36,cars:72,prefetchDepth:2,near:1250,draw:1050,retire:3500,farStep:.2};
 export const vector=(angle:number)=>({x:Math.sin(angle*Math.PI/180),y:-Math.cos(angle*Math.PI/180)});
 export function portAngle(node:WorldNode,port:Port){return node.angle+port*90;}
@@ -21,7 +25,7 @@ export function makeNode(seed:number,id:number,x:number,y:number,angle:number):W
   const kind:PlaceKind=roll<.16?'roundabout':roll<.32?'priority':roll<.49?'side-yield':roll<.65?'t-left':roll<.81?'t-right':'cross';
   const arms:Port[]=kind==='t-left'?[0,2,3]:kind==='t-right'?[0,1,2]:kind==='side-yield'?(rng()<.5?[0,1,2]:[0,2,3]):[0,1,2,3];
   const priority:Port[]=kind==='priority'?(rng()<.65?[0,2]:[1,3]):kind==='side-yield'?[0,2]:[];
-  return{id,seed:hash(seed,id,3),cx:0,cy:0,x,y,angle,kind,arms,priority,connections:{},spawned:false};
+  return{id,seed:hash(seed,id,3),cx:0,cy:0,x,y,angle,kind,speedLimit:kind==='roundabout'?30:kind==='priority'?50:kind==='side-yield'?40:30,arms,priority,connections:{},spawned:false};
 }
 export function cubic(a:Point,b:Point,c:Point,d:Point,steps=28):Point[]{const points:Point[]=[];for(let i=0;i<=steps;i++){const t=i/steps,u=1-t;points.push({x:u*u*u*a.x+3*u*u*t*b.x+3*u*t*t*c.x+t*t*t*d.x,y:u*u*u*a.y+3*u*u*t*b.y+3*u*t*t*c.y+t*t*t*d.y});}return points;}
 function offsetPath(points:Point[],offset:number):Point[]{return points.map((p,i)=>{const a=points[Math.max(0,i-1)],b=points[Math.min(points.length-1,i+1)],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);return{x:p.x-dy/len*offset,y:p.y+dx/len*offset};});}
@@ -45,12 +49,12 @@ function roadBetween(world:WorldState,parent:WorldNode,port:Port):WorldNode|null
   }
   const start=atPort(parent,port),end=atPort(child,opposite),v=vector(portAngle(parent,port)),w=vector(portAngle(child,opposite)),length=Math.hypot(end.x-start.x,end.y-start.y);
   const points=cubic(start,{x:start.x+v.x*length*.34,y:start.y+v.y*length*.34},{x:end.x+w.x*length*.34,y:end.y+w.y*length*.34},end);
-  const road:WorldRoad={id:world.nextRoadId++,a:parent.id,b:child.id,ap:port,bp:opposite,points,forward:offsetPath(points,41),backward:offsetPath([...points].reverse(),41),width:164};
+  const road:WorldRoad={id:world.nextRoadId++,a:parent.id,b:child.id,ap:port,bp:opposite,points,forward:offsetPath(points,41),backward:offsetPath([...points].reverse(),41),width:164,speedLimit:([30,40,50,60] as const)[hash(world.seed,parent.id,port)%4]};
   if(!found)world.nodes.push(child);world.roads.push(road);parent.connections[port]=road.id;child.connections[opposite]=road.id;world.generated+=found?0:1;return child;
 }
-export function createWorld(seed:number):WorldState {
+export function createWorld(seed:number,settings:Partial<WorldSettings>={}):WorldState {
   const root=cellNode(seed,0,0);root.angle=0;
-  const world:WorldState={seed,nodes:[root],roads:[],cars:[],activeNodeId:1,entry:2,nextCarId:1,nextRoadId:1,elapsedFar:0,streamAt:0,enteredNodeId:null,owners:{},generated:1,retired:0,playerRoadId:null};
+  const world:WorldState={seed,settings:{trafficDensity:settings.trafficDensity&&settings.trafficDensity in TRAFFIC_DENSITY?settings.trafficDensity:'normal'},nodes:[root],roads:[],cars:[],activeNodeId:1,entry:2,nextCarId:1,nextRoadId:1,elapsedFar:0,streamAt:0,enteredNodeId:null,owners:{},generated:1,retired:0,playerRoadId:null};
   streamWorld(world,{x:41,y:290,angle:0,wheel:0},true);return world;
 }
 export function streamWorld(world:WorldState,player:Body,_force=false){
@@ -94,3 +98,12 @@ export function playerEntry(node:WorldNode,player:Body):Port {
   const incoming=angleDifference(player.angle,node.angle+180);return ((Math.round(incoming/90)+4)%4) as Port;
 }
 export function visibleWorld(world:WorldState,player:Point){return{nodes:world.nodes.filter(n=>Math.hypot(n.x-player.x,n.y-player.y)<1400),roads:world.roads.filter(r=>r.points.some(p=>Math.hypot(p.x-player.x,p.y-player.y)<1400))};}
+
+export function worldSpeedLimit(world:WorldState,p:Point):SpeedLimit {
+  for(const node of world.nodes){
+    const radius=Math.hypot(p.x-node.x,p.y-node.y);if(radius>335)continue;
+    if(radius<170)return node.speedLimit;
+    for(const port of node.arms){const v=vector(portAngle(node,port)),dx=p.x-node.x,dy=p.y-node.y,along=dx*v.x+dy*v.y,side=dx*(-v.y)+dy*v.x;if(along>=0&&along<=320&&Math.abs(side)<82)return node.speedLimit;}
+  }
+  return nearestRoad(world,p)?.road.speedLimit??nodeAt(world,world.activeNodeId).speedLimit;
+}

@@ -19,7 +19,7 @@ import {
   captureFrame, soundHorn,
 } from './dist-core/index.js';
 
-const state = createWorldState(12345); // seed is explicit and deterministic
+const state = createWorldState(12345, {trafficDensity: 'normal'}); // seed is explicit and deterministic
 const clock = createClock();
 state.phase = 'driving';
 
@@ -40,7 +40,7 @@ soundHorn(state); // player horn; audio/rendering remain host responsibilities
 
 Physics runs at 60 fixed steps per second. The clock caps catch-up to 250 ms per host call and drops paused elapsed time. Rendering may run at any frequency. The web adapter renders at up to 30 fps and memoizes static road geometry.
 
-Coordinates are logical scene units, Y points downward, heading 0 points up, and positive heading/steering turn clockwise/right. Speed is logical units per second; the current UI maps 88 units/s to 30 km/h. A new renderer supplies its own coordinate and camera conversion. The core does not own a camera.
+Coordinates are logical scene units, Y points downward, heading 0 points up, and positive heading/steering turn clockwise/right. Speed is logical units per second; the UI maps 88 units/s to 30 km/h using `speedToKmh` / `kmhToSpeed`. World player speed is capped at 70 km/h; signed limits are 30, 40, 50 and 60 km/h. A new renderer supplies its own coordinate and camera conversion. The core does not own a camera.
 
 ## Modules
 
@@ -105,3 +105,9 @@ World admission is deliberately conservative. One NPC reserves an entire junctio
 The web host captures a checkpoint when the active node changes and restores it on retry. Its north-up overview stays centred on the player; heading-up view rotates around the player. Both keep warning labels in screen coordinates. Traffic lights, narrow driveways and multi-car roundabout circulation remain extensions.
 
 Run `npm run bench:world` for a repeatable graph/traffic stress check and timing distribution. Timing excludes React, SVG layout and display rendering; check those on target devices separately.
+
+## Traffic settings and speed limits
+
+`createWorldState(seed, {trafficDensity})` copies the density into `world.settings`. Supported values are `none`, `low`, `normal` (default) and `high`. It affects seeded arrivals at every newly streamed node without changing road geometry or signs. The web UI keeps a separate pending selection and passes it only to a fresh world; checkpoint retry preserves the old world's settings. Global car budgets still apply to high density.
+
+Nodes and roads carry `speedLimit` in km/h; physical speed remains logical units/s. `worldSpeedLimit(world, pose)` supplies the current signed limit, and `state.speedLimit` / failure scene snapshots expose it to hosts. Each connected arm has explicit incoming and outgoing sign 362 at 320 units from the node centre, so limits change by signs rather than merely by passing a junction. NPC target speeds account for the slower approach before those signs and maintain the junction limit until reaching the outgoing sign. Player controls remain manual: the dashboard highlights exceeding the displayed limit without automatic braking or a new failure rule. The sidebar's pause state adds no panel or content block.

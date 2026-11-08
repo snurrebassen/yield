@@ -5,9 +5,11 @@ An open-ended Norwegian road-rules practice game. Drive wherever you choose thro
 ## Randomized free driving
 
 - No lesson sequence, assigned destination, marked target, prescribed turn, or completion checklist.
-- A streamed, seeded road graph prefetches two junction links around the player. Curved roads connect four-way junctions, T-junctions, signed side roads, priority roads and single-lane roundabouts. Signs 202, 206, 208 and 406 and yield markings describe the local rule.
+- A streamed, seeded road graph prefetches two junction links around the player. Curved roads connect four-way junctions, T-junctions, signed side roads, priority roads and single-lane roundabouts. Signs 202, 206, 208, 362 and 406 and yield markings describe the local rule.
 - Take any legal exit and physically continue to the next junction in the same coordinates. The session counts passages without imposing a route.
 - Retry restores an approach checkpoint, including the nearby world and traffic. “Ny tilfeldig verden” starts a fresh seed.
+- A compact sidebar with collapsible rule details. Pause preserves its layout; traffic density (none/low/normal/high) applies only when restarting the world, while a checkpoint retry keeps its original traffic.
+- Signed 30/40/50/60 km/h limits along roads and junction approaches. The dashboard shows the current limit and turns the speed reading red above it. Player speed can reach 70 km/h; signs do not automatically brake the player. NPC cruising respects road limits and slows before junctions.
 - Continuous car-relative steering, a soft lane guide with slack, independent world position/heading/wheel angle, and recoverable lane warnings. The guide responds to observed steering and indicators, never to a destination.
 - A heading-up following camera with a north-up overview centred on the player, animated indicators, brake lights, visible steering, and simultaneous touch driving controls.
 - Unobstructed pause and failure views. Short situation warnings stay anchored above/below the player car; the sidebar retains the full explanation and retry controls. Static instructional boxes remain absent from the road.
@@ -33,6 +35,7 @@ npm run dev
 npm test
 npm run build
 npm run bench:world
+npm run bench:world -- high
 ```
 
 The static production build is written to `dist/`. `npm run build:core` emits a standalone JavaScript module and TypeScript declarations in `dist-core/`, without React or browser dependencies. See [the porting guide](docs/PORTING.md) for the input/event/snapshot contract and a host-loop example. No backend, account, or API key is needed to run locally. Practice state is kept in memory for the current session. System font fallbacks are available when Google Fonts is unavailable.
@@ -71,6 +74,7 @@ Rule wording was checked on 8 November 2026 against primary sources:
 
 - [Trafikkreglene § 7 — Vikeplikt](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§7).
 - [Trafikkreglene § 14 — Signal og tegn](https://lovdata.no/dokument/SF/forskrift/1986-03-21-747/§14).
+- [Skiltforskriften § 8 — speed limit sign 362](https://lovdata.no/dokument/SF/forskrift/2005-10-07-1219/§8).
 - [Skiltforskriften § 6 — signs 202, 206 and 208](https://lovdata.no/dokument/SF/forskrift/2005-10-07-1219/§6).
 - [Statens vegvesen — traffic rules](https://www.vegvesen.no/trafikkinformasjon/trafikksikkerhet/trafikkregler/).
 

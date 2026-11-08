@@ -15,3 +15,5 @@ export {soundHorn} from './horn.ts';
 
 export * from './world.ts';
 export {createWorldState,worldGuide,worldLane} from './worldSimulation.ts';
+
+export * from './speed.ts';
