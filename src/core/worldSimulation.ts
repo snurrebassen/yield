@@ -143,9 +143,15 @@ export function stepWorld(state:State,dt:number,input:Input){
   const world=state.world!;state.time+=dt;state.frameNumber++;if(state.warning&&state.time>state.warningUntil)state.warning=null;
   updateContext(state);
   if(state.time>=world.streamAt){streamWorld(world,state.player);seedTraffic(state);world.streamAt=state.time+.5;for(const key of Object.keys(state.warningCooldown))if(state.warningCooldown[key]<state.time-4)delete state.warningCooldown[key];}
-  const guide=worldGuide(state);state.speed=Math.max(0,Math.min(state.lane==='off-road'?42:MAX_DRIVING_SPEED,state.speed+(input.brake?-125:input.gas?37:-19)*dt));
+  const guide=worldGuide(state);
+  const desired=input.brake?0:input.reverse?-kmhToSpeed(12):input.gas?(state.lane==='off-road'?42:MAX_DRIVING_SPEED):0;
+  const braking=input.brake||(state.speed*desired<0);
+  const change=(braking?125:desired===0?19:37)*dt;
+  // Cross zero before changing gear; braking works in either direction.
+  const target=braking?0:desired;
+  state.speed+=Math.sign(target-state.speed)*Math.min(Math.abs(target-state.speed),change);
   const active=nodeAt(world,world.activeNodeId),assistance=active.kind==='roundabout'&&world.playerRoadId===null?state.assistance*2.4:state.assistance;
-  const before={...state.player};stepDriving(state.player,state.speed,input.steer??0,guide,dt,assistance);state.distance+=distance(before,state.player);
+  const before={...state.player};stepDriving(state.player,state.speed,input.steer??0,guide,dt,state.speed<0?0:assistance);state.distance+=distance(before,state.player);
   state.speedLimit=worldSpeedLimit(world,state.player);state.lane=worldLane(state);state.offRoadTime=state.lane==='ok'?0:state.offRoadTime+dt;
   state.traffic=world.cars.filter(c=>distance(c,state.player)<WORLD_BUDGET.near);
   moveTraffic(state,dt,false);world.elapsedFar+=dt;if(world.elapsedFar>=WORLD_BUDGET.farStep){moveTraffic(state,world.elapsedFar,true);world.elapsedFar=0;}

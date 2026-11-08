@@ -88,3 +88,7 @@ Rule wording was checked on 8 November 2026 against primary sources:
 4. Multiple simultaneous circulating vehicles and more selective conflict reservations.
 5. Pedestrians, cyclists, driveways, obstructions, and buses leaving stops.
 6. Randomized hesitation and driver behaviour.
+
+## Mobile driving
+
+Hold a finger on the road to accelerate; drag left/right from the initial touch point for analogue steering. Drag down to reverse (up to 12 km/h); release to brake to a stop. Changing between forward and reverse first brakes through zero. Touch uses the heading-up camera, captures one pointer and clears on cancellation, focus loss, pause or hidden page. The layout adapts to portrait/landscape touch devices; indicators, horn and settings remain separate controls.

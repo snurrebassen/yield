@@ -15,7 +15,7 @@ export type Traffic = {
 export type State={phase:Phase;rule:JunctionRule;seed:number;time:number;distance:number;speed:number;speedLimit:number;route:Route;player:Body;assistance:number;lane:LaneStatus;offRoadTime:number;indicator:Indicator;indicatorSince:number;indicatorUsed:Indicator;traffic:Traffic[];reason:EventCode|null;slowed:boolean;crossings:number;notice:NoticeCode|null;noticeUntil:number;events:TrafficEvent[];eventSequence:number;warning:TrafficEvent|null;warningUntil:number;warningCooldown:Record<string,number>;failure:Failure|null;frameNumber:number;recovery:Recovery|null;recoveryCheckAt:number;horns:HornPulse[];hornSequence:number;playerHornAt:number;world?:WorldState};
 export type Actor={id:number;direction:Direction;route:Route;distance:number;speed:number;cruiseSpeed:number;pose?:Point & {angle:number}};
 
-export type Input={gas:boolean;brake:boolean;steer?:number};
+export type Input={gas:boolean;brake:boolean;reverse?:boolean;steer?:number};
 export type EventCode='yield-caution'|'priority-pressure'|'yield-violation'|'collision'|'off-road'|'wrong-lane';
 export type NoticeCode='junction-cleared'|'signal-missing';
 export type TrafficEvent={id:number;frame:number;time:number;seed:number;severity:'warning'|'failure';code:EventCode;actorIds:number[];point:Point|null;facts:Record<string,number>};
