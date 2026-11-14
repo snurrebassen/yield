@@ -62,14 +62,10 @@ export function worldGuide(state:State):Point[]{
   const world=state.world!,node=nodeAt(world,world.activeNodeId),entry=world.entry;
   if(world.playerRoadId!==null){const road=world.roads.find(r=>r.id===world.playerRoadId)!;return road.b===node.id?road.forward:road.backward;}
   const relative=angleDifference(state.player.angle,portAngle(node,entry)+180);
-  const turn=state.indicator??(node.kind==='roundabout'?'straight':relative< -25?'left':relative>25?'right':'straight');
+  const turn=node.kind==='roundabout'?'straight':relative< -25?'left':relative>25?'right':'straight';
   state.route=turn;
   const desired=((entry+(turn==='left'?1:turn==='right'?3:2))%4) as Port;
   let exit=node.arms.includes(desired)?desired:node.arms.find(p=>p!==entry)!;
-  if(node.kind==='roundabout'&&state.indicator==='right'&&distance(state.player,node)<158){
-    const polar=Math.atan2(state.player.x-node.x,-(state.player.y-node.y))*180/Math.PI;
-    exit=[...node.arms].sort((a,b)=>((polar-portAngle(node,a)-20+720)%360)-((polar-portAngle(node,b)-20+720)%360))[0];
-  }
   return junctionPath(node,entry,exit);
 }
 function yields(node:WorldNode,a:{entry:Port;exit:Port},b:{entry:Port;exit:Port}){

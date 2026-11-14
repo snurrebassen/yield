@@ -10,7 +10,7 @@ An open-ended Norwegian road-rules practice game. Drive wherever you choose thro
 - Retry restores an approach checkpoint, including the nearby world and traffic. “Ny tilfeldig verden” starts a fresh seed.
 - A compact sidebar with collapsible rule details. Pause preserves its layout; traffic density (none/low/normal/high) applies only when restarting the world, while a checkpoint retry keeps its original traffic.
 - Signed 30/40/50/60 km/h limits along roads and junction approaches. The dashboard shows the current limit and turns the speed reading red above it. Player speed can reach 70 km/h; signs do not automatically brake the player. NPC cruising respects road limits and slows before junctions.
-- Continuous car-relative steering, a soft lane guide with slack, independent world position/heading/wheel angle, and recoverable lane warnings. The guide responds to observed steering and indicators, never to a destination.
+- Continuous car-relative steering, a soft lane guide with slack, independent world position/heading/wheel angle, and recoverable lane warnings. The guide responds to observed steering only, never to a destination.
 - A heading-up following camera with a north-up overview centred on the player, animated indicators, brake lights, visible steering, and simultaneous touch driving controls.
 - Unobstructed pause and failure views. Short situation warnings stay anchored above/below the player car; the sidebar retains the full explanation and retry controls. Static instructional boxes remain absent from the road.
 - Amber warnings for developing tight gaps and early pressure on other drivers; collisions and clear unsafe entries/forced hard braking freeze the exact incident frame.
@@ -53,7 +53,7 @@ The static production build is written to `dist/`. `npm run build:core` emits a 
 | Space | Pause / resume |
 | Escape | Pause or close help |
 
-Release A/D to let the steering wheel centre. Bounded assistance gives gentle corrections without snapping the car to a lane. You can still oversteer, understeer, cross the centre line, or leave the road. W never changes direction. Use the steering, indicator, and accelerator/brake buttons on touch devices. Turn signals cancel after a completed turn.
+Release A/D to let the steering wheel centre. Bounded assistance gives gentle corrections without snapping the car to a lane. You can still oversteer, understeer, cross the centre line, or leave the road. W never changes direction. Indicators only signal to traffic and do not influence steering assistance. Use the steering, indicator, and accelerator/brake buttons on touch devices. Turn signals cancel after a completed turn.
 
 ## Structure and portability
 

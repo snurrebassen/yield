@@ -5,11 +5,10 @@ export function createState(seed:number=42):State {
   const rule:JunctionRule=random(seed^0xa511e9b3)()<.38?'signed':'unsigned';
   return{phase:'ready',rule,seed,time:0,distance:0,speed:0,speedLimit:30,route:'straight',player:{x:521,y:650,angle:0,wheel:0},assistance:.6,lane:'ok',offRoadTime:0,indicator:null,indicatorSince:0,indicatorUsed:null,traffic:makeTraffic(rule,seed),reason:null,slowed:false,crossings:0,notice:null,noticeUntil:0,events:[],eventSequence:0,warning:null,warningUntil:0,warningCooldown:{},failure:null,frameNumber:0,recovery:null,recoveryCheckAt:0,horns:[],hornSequence:0,playerHornAt:-10};
 }
-// Choose assistance from observed motion and the indicator, never a destination.
+// Choose assistance from observed motion, never a destination.
 export function guideRoute(state:State):Route {
   const angle=angleDifference(state.player.angle,0);
   if(state.player.y<510&&Math.abs(angle)>18)return angle<0?'left':'right';
-  if(state.indicator&&state.player.y<550)return state.indicator;
   return 'straight';
 }
 export function nextJunction(state:State,exit:Route|'back'){
