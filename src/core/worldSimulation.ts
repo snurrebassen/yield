@@ -89,6 +89,11 @@ function transition(state:State,car:WorldCar){
     const next=nodeAt(world,car.nodeId);car.exit=chooseExit(state,next,car.entry,car.id+state.frameNumber);car.direction=approachDirection(car.entry);car.route=turnFor(car.entry,car.exit);car.cruiseSpeed=kmhToSpeed(road.speedLimit)*(.8+(car.id%7)*.02);
   }
 }
+function playerBlocksRoute(state:State,node:WorldNode,car:WorldCar){
+  if(state.world!.activeNodeId!==node.id||distance(state.player,node)>260)return false;
+  const path=junctionPath(node,car.entry,car.exit),projection=projectPath(path,state.player);
+  return projection.offset<55&&vehiclesOverlap(poseOn(path,projection.distance),state.player,29,54);
+}
 function moveTraffic(state:State,dt:number,far:boolean){
   const world=state.world!,cars=world.cars,intent=playerIntent(state);
   const approaches=new Map<number,Map<Port,WorldCar>>();
@@ -101,14 +106,17 @@ function moveTraffic(state:State,dt:number,far:boolean){
     if(car.mode==='road'&&road&&car.progress<90){const from=nodeAt(world,road.a===node.id?road.b:road.a);target=Math.min(target,kmhToSpeed(from.speedLimit));}
     let stop=Infinity;
     if(car.mode==='road'&&remaining<180){
-      let owner=world.owners[node.id];const playerHere=world.activeNodeId===node.id&&distance(state.player,node)<(node.kind==='roundabout'?180:155);
+      let owner:number|undefined=world.owners[node.id];const playerHere=playerBlocksRoute(state,node,car);
       const fronts=[...(approaches.get(node.id)?.values()??[])].filter(other=>other.mode==='road');
       const contenders=fronts.filter(other=>other.entry!==car.entry);
       const superior=contenders.find(other=>yields(node,car,other));
       const playerApproaching=world.activeNodeId===node.id&&distance(state.player,node)<400&&yields(node,car,intent);
       // Circular right-hand waits use an explicit courtesy release after a pause.
       const cycle=fronts.some(front=>front.id===car.id)&&contenders.length>0&&fronts.every(other=>(other.stoppedFor??0)>2.5);
-      const winner=cycle?fronts.sort((a,b)=>Number(node.priority.includes(b.entry))-Number(node.priority.includes(a.entry))||a.id-b.id)[0].id:null;
+      const eligible=fronts.filter(front=>!playerBlocksRoute(state,node,front)&&!(world.activeNodeId===node.id&&distance(state.player,node)<400&&yields(node,front,intent)));
+      const held=owner===undefined?undefined:cars.find(c=>c.id===owner);
+      if(held?.mode==='road'&&(held.stoppedFor??0)>2.5&&!eligible.includes(held)){delete world.owners[node.id];owner=undefined;}
+      const winner=cycle?eligible.sort((a,b)=>Number(node.priority.includes(b.entry))-Number(node.priority.includes(a.entry))||a.id-b.id)[0]?.id??null:null;
       if(owner===undefined&&winner!==null){owner=winner;world.owners[node.id]=winner;}
       if((owner!==undefined&&owner!==car.id)||playerHere||playerApproaching||(superior&&owner!==car.id)){
         block=playerHere||playerApproaching?-1:owner??superior?.id??winner;reason=playerHere?'safety':'priority';stop=Math.max(car.progress,length-9);

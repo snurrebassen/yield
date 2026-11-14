@@ -78,3 +78,17 @@ test('circulating traffic holds the roundabout reservation until it has left',()
  for(let i=0;i<240;i++)stepSimulation(s,{gas:false,brake:true});assert.equal(waiting.mode,'road');assert.ok(waiting.speed<1);assert.equal(waiting.blockedBy,inside.id);
  for(let i=0;i<1000;i++)stepSimulation(s,{gas:false,brake:true});assert.ok(waiting.path!==w.roads.find(r=>r.id===n.connections[1])!.backward);
 });
+test('a player waiting near the junction does not lock clear cross traffic or reserve it for a blocked car',()=>{
+ const s=Array.from({length:80},(_,seed)=>createWorldState(seed)).find(s=>s.world!.nodes[0].arms.length===4&&Object.keys(s.world!.nodes[0].connections).length===4)!;
+ const w=s.world!,n=w.nodes[0];n.kind='cross';n.priority=[];w.nodes.forEach(n=>n.spawned=true);s.phase='driving';s.player={...atPort(n,2,145,'in'),angle:n.angle,wheel:0};
+ const left=approaching(s,3,1,1),right=approaching(s,1,3,2),north=approaching(s,0,2,3);w.cars=[left,right,north];w.owners[n.id]=left.id;
+ const rightPath=right.path;
+ for(let i=0;i<1200;i++){stepSimulation(s,{gas:false,brake:true});assert.equal(s.phase,'driving');for(const a of w.cars)for(const b of w.cars)if(a.id<b.id)assert.ok(!vehiclesOverlap(a,b));}
+ assert.notEqual(right.path,rightPath,'clear traffic that the player must yield for should proceed');
+ assert.notEqual(w.owners[n.id],left.id,'a reservation must not stay with a car waiting for the player');
+});
+test('clearing a reservation never releases a car through the player blocking its actual route',()=>{
+ const s=Array.from({length:80},(_,seed)=>createWorldState(seed)).find(s=>s.world!.nodes[0].connections[3]!==undefined)!;
+ const w=s.world!,n=w.nodes[0];n.kind='priority';n.priority=[1,3];w.nodes.forEach(n=>n.spawned=true);const car=approaching(s,3,1,1);w.cars=[car];s.player={...poseOn(junctionPath(n,3,1),230),wheel:0};s.phase='driving';w.owners[n.id]=car.id;
+ for(let i=0;i<900;i++)stepSimulation(s,{gas:false,brake:true});assert.equal(s.phase,'driving');assert.equal(car.mode,'road');assert.equal(car.speed,0);assert.equal(car.blockedBy,-1);assert.ok(!vehiclesOverlap(car,s.player));
+});
